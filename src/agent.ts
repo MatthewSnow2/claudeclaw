@@ -1,13 +1,19 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
+import { getArcadeMcpConfig, isArcadeConfigured } from './arcade-config.js';
 import { PROJECT_ROOT } from './config.js';
-import { readEnvFile } from './env.js';
+import { readLocalEnvFile } from './env.js';
 import { logger } from './logger.js';
 
 export interface AgentResult {
   text: string | null;
   newSessionId: string | undefined;
 }
+
+// Concurrency limiter: only 1 Claude subprocess at a time to avoid rate limit
+// collisions with interactive Claude Code sessions.
+const MAX_CONCURRENT_AGENTS = 1;
+let activeAgentCalls = 0;
 
 /**
  * A minimal AsyncIterable that yields a single user message then closes.
@@ -49,10 +55,31 @@ export async function runAgent(
   sessionId: string | undefined,
   onTyping: () => void,
 ): Promise<AgentResult> {
-  // Read secrets from .env without polluting process.env.
-  // CLAUDE_CODE_OAUTH_TOKEN is optional — the subprocess finds auth via ~/.claude/
-  // automatically. Only needed if you want to override which account is used.
-  const secrets = readEnvFile(['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']);
+  if (activeAgentCalls >= MAX_CONCURRENT_AGENTS) {
+    logger.warn({ activeAgentCalls }, 'Agent concurrency limit reached');
+    return {
+      text: 'Already processing another request. Try again in a moment.',
+      newSessionId: sessionId,
+    };
+  }
+
+  activeAgentCalls++;
+  try {
+    return await runAgentInner(message, sessionId, onTyping);
+  } finally {
+    activeAgentCalls--;
+  }
+}
+
+async function runAgentInner(
+  message: string,
+  sessionId: string | undefined,
+  onTyping: () => void,
+): Promise<AgentResult> {
+  // Read auth overrides from LOCAL .env only (not ~/.env.shared).
+  // ANTHROPIC_API_KEY in ~/.env.shared would override Max plan OAuth with API billing.
+  // These are only needed if you want to explicitly override which account is used.
+  const secrets = readLocalEnvFile(['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']);
 
   const sdkEnv: Record<string, string | undefined> = { ...process.env };
   if (secrets.CLAUDE_CODE_OAUTH_TOKEN) {
@@ -60,6 +87,13 @@ export async function runAgent(
   }
   if (secrets.ANTHROPIC_API_KEY) {
     sdkEnv.ANTHROPIC_API_KEY = secrets.ANTHROPIC_API_KEY;
+  }
+
+  // Build mcpServers config — Arcade provides Linear/GitHub/Slack tools
+  const mcpServers: Record<string, { command: string; args: string[] }> = {};
+  if (isArcadeConfigured()) {
+    mcpServers['arcade'] = getArcadeMcpConfig();
+    logger.info('Arcade MCP server configured');
   }
 
   let newSessionId: string | undefined;
@@ -93,6 +127,9 @@ export async function runAgent(
 
         // Pass secrets to the subprocess without polluting our own process.env
         env: sdkEnv,
+
+        // Arcade MCP: Linear, GitHub, Slack tools (empty if keys not configured)
+        mcpServers,
       },
     })) {
       const ev = event as Record<string, unknown>;
@@ -109,6 +146,18 @@ export async function runAgent(
           'Agent result received',
         );
       }
+    }
+  } catch (err) {
+    // The SDK throws when the Claude Code subprocess exits with non-zero,
+    // even after emitting a valid result. If we already captured the result,
+    // log the exit error but don't propagate it.
+    if (resultText !== null) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : err },
+        'Agent process exited with error after delivering result (ignored)',
+      );
+    } else {
+      throw err;
     }
   } finally {
     clearInterval(typingInterval);

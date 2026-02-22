@@ -1,8 +1,8 @@
 import { Api, Bot, Context, InputFile, RawApi } from 'grammy';
 
-import { runAgent } from './agent.js';
 import {
   ALLOWED_CHAT_ID,
+  ALLOWED_CHAT_IDS,
   MAX_MESSAGE_LENGTH,
   TELEGRAM_BOT_TOKEN,
   TYPING_REFRESH_MS,
@@ -11,6 +11,7 @@ import { clearSession, getRecentMemories, getSession, setSession } from './db.js
 import { logger } from './logger.js';
 import { downloadMedia, buildPhotoMessage, buildDocumentMessage } from './media.js';
 import { buildMemoryContext, saveConversationTurn } from './memory.js';
+import { routeMessage } from './router.js';
 import {
   downloadTelegramFile,
   transcribeAudio,
@@ -21,6 +22,26 @@ import {
 
 // Per-chat voice mode toggle (in-memory, resets on restart)
 const voiceEnabledChats = new Set<string>();
+
+/**
+ * Scan outgoing text for patterns that look like API keys or secrets
+ * and replace them with [REDACTED]. Defence-in-depth measure.
+ */
+export function redactSecrets(text: string): string {
+  return text
+    // OpenAI keys: sk-...
+    .replace(/sk-[A-Za-z0-9_-]{20,}/g, '[REDACTED]')
+    // GitHub tokens: ghp_, gho_, ghs_, ghu_, ghr_
+    .replace(/gh[pousr]_[A-Za-z0-9_]{20,}/g, '[REDACTED]')
+    // Generic Bearer/API tokens (long hex or base64 strings after common prefixes)
+    .replace(/(?:key|token|secret|password|apikey|api_key)[\s=:]+['"]?[A-Za-z0-9_\-/.]{20,}/gi, '[REDACTED]')
+    // PEM private key blocks
+    .replace(/-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |DSA )?PRIVATE KEY-----/g, '[REDACTED]')
+    // AWS keys: AKIA...
+    .replace(/AKIA[A-Z0-9]{16}/g, '[REDACTED]')
+    // Long hex strings (40+ chars, likely tokens)
+    .replace(/\b[0-9a-f]{40,}\b/gi, '[REDACTED]');
+}
 
 /**
  * Convert Markdown to Telegram HTML.
@@ -124,16 +145,22 @@ async function sendTyping(api: Api<RawApi>, chatId: number): Promise<void> {
 }
 
 /**
- * Authorise the incoming chat against ALLOWED_CHAT_ID.
- * If ALLOWED_CHAT_ID is not yet configured, guide the user to set it up.
- * Returns true if the message should be processed.
+ * Authorise an incoming message by checking both the sender (from) and
+ * the chat against ALLOWED_CHAT_IDS. This supports:
+ * - DMs: chatId matches your user ID
+ * - Groups: senderId matches your user ID (you sent it in the group)
+ * - Explicit group allow: group chat ID is in the allowed list
  */
-function isAuthorised(chatId: number): boolean {
-  if (!ALLOWED_CHAT_ID) {
+function isAuthorised(chatId: number, senderId?: number): boolean {
+  if (ALLOWED_CHAT_IDS.size === 0) {
     // Not yet configured — let every request through but warn in the reply handler
     return true;
   }
-  return chatId.toString() === ALLOWED_CHAT_ID;
+  // Check if the chat itself is allowed (DMs, or explicitly listed groups)
+  if (ALLOWED_CHAT_IDS.has(chatId.toString())) return true;
+  // Check if the sender is allowed (you messaging in any group)
+  if (senderId && ALLOWED_CHAT_IDS.has(senderId.toString())) return true;
+  return false;
 }
 
 /**
@@ -144,7 +171,7 @@ async function handleMessage(ctx: Context, message: string): Promise<void> {
   const chatIdStr = chatId.toString();
 
   // Security gate
-  if (!isAuthorised(chatId)) {
+  if (!isAuthorised(chatId, ctx.from?.id)) {
     logger.warn({ chatId }, 'Rejected message from unauthorised chat');
     return;
   }
@@ -162,10 +189,9 @@ async function handleMessage(ctx: Context, message: string): Promise<void> {
     'Processing message',
   );
 
-  // Build memory context and prepend to message
-  const memCtx = await buildMemoryContext(chatIdStr, message);
-  const fullMessage = memCtx ? `${memCtx}\n\n${message}` : message;
-
+  // Route based on the ORIGINAL message (before memory context),
+  // so @prefix detection works regardless of memory state.
+  // Memory context is only useful for Claude, not external backends.
   const sessionId = getSession(chatIdStr);
 
   // Start typing immediately, then refresh on interval
@@ -176,18 +202,35 @@ async function handleMessage(ctx: Context, message: string): Promise<void> {
   );
 
   try {
-    const result = await runAgent(fullMessage, sessionId, () =>
+    // Build memory context (only used by Claude backend)
+    const memCtx = await buildMemoryContext(chatIdStr, message);
+    const fullMessage = memCtx ? `${memCtx}\n\n${message}` : message;
+
+    // Route using original message for @prefix detection,
+    // pass full memory-enriched message for Claude backend
+    const result = await routeMessage(message, fullMessage, sessionId, () =>
       void sendTyping(ctx.api, chatId),
     );
 
     clearInterval(typingInterval);
+
+    // null = message directed at another bot, ignore silently
+    if (!result) return;
 
     if (result.newSessionId) {
       setSession(chatIdStr, result.newSessionId);
       logger.info({ newSessionId: result.newSessionId }, 'Session saved');
     }
 
-    const responseText = result.text?.trim() || 'Done.';
+    let responseText = result.text?.trim() || 'Done.';
+
+    // Prepend [backend] tag for non-Claude responses
+    if (result.backend !== 'claude') {
+      responseText = `[${result.backend}]\n\n${responseText}`;
+    }
+
+    // Redact any secrets that may have leaked into the response
+    responseText = redactSecrets(responseText);
 
     // Save conversation turn to memory
     saveConversationTurn(chatIdStr, message, responseText);
@@ -212,7 +255,8 @@ async function handleMessage(ctx: Context, message: string): Promise<void> {
   } catch (err) {
     clearInterval(typingInterval);
     logger.error({ err }, 'Agent error');
-    await ctx.reply('Something went wrong. Check the logs and try again.');
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    await ctx.reply(`Something went wrong: ${redactSecrets(errorMsg)}`);
   }
 }
 
@@ -294,7 +338,7 @@ export function createBot(): Bot {
       return;
     }
     const chatId = ctx.chat!.id;
-    if (!isAuthorised(chatId)) return;
+    if (!isAuthorised(chatId, ctx.from?.id)) return;
     if (!ALLOWED_CHAT_ID) {
       await ctx.reply(
         `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart ClaudeClaw.`,
@@ -320,7 +364,7 @@ export function createBot(): Bot {
   // Photos — download and pass to Claude
   bot.on('message:photo', async (ctx) => {
     const chatId = ctx.chat!.id;
-    if (!isAuthorised(chatId)) return;
+    if (!isAuthorised(chatId, ctx.from?.id)) return;
     if (!ALLOWED_CHAT_ID) {
       await ctx.reply(
         `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart ClaudeClaw.`,
@@ -346,7 +390,7 @@ export function createBot(): Bot {
   // Documents — download and pass to Claude
   bot.on('message:document', async (ctx) => {
     const chatId = ctx.chat!.id;
-    if (!isAuthorised(chatId)) return;
+    if (!isAuthorised(chatId, ctx.from?.id)) return;
     if (!ALLOWED_CHAT_ID) {
       await ctx.reply(
         `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart ClaudeClaw.`,

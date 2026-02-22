@@ -9,14 +9,21 @@ const envConfig = readEnvFile([
   'GROQ_API_KEY',
   'ELEVENLABS_API_KEY',
   'ELEVENLABS_VOICE_ID',
+  'CLAWDBOT_GATEWAY_TOKEN',
 ]);
 
 export const TELEGRAM_BOT_TOKEN =
   process.env.TELEGRAM_BOT_TOKEN || envConfig.TELEGRAM_BOT_TOKEN || '';
 
-// Only respond to this Telegram chat ID. Set this after getting your ID via /chatid.
-export const ALLOWED_CHAT_ID =
-  process.env.ALLOWED_CHAT_ID || envConfig.ALLOWED_CHAT_ID || '';
+// Comma-separated list of allowed Telegram chat/user IDs.
+// Matches against both ctx.from.id (sender) and ctx.chat.id (chat).
+// This allows the bot to work in DMs, groups, and channels.
+const rawAllowedIds = process.env.ALLOWED_CHAT_ID || envConfig.ALLOWED_CHAT_ID || '';
+export const ALLOWED_CHAT_IDS: Set<string> = new Set(
+  rawAllowedIds.split(',').map((s) => s.trim()).filter(Boolean),
+);
+// Keep single export for backward compat (first ID, used for scheduler target)
+export const ALLOWED_CHAT_ID = ALLOWED_CHAT_IDS.values().next().value ?? '';
 
 // Voice — read via readEnvFile, not process.env
 export const GROQ_API_KEY = envConfig.GROQ_API_KEY ?? '';
@@ -31,6 +38,11 @@ const __dirname = path.dirname(__filename);
 // and all global skills from ~/.claude/skills/ via settingSources.
 export const PROJECT_ROOT = path.resolve(__dirname, '..');
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
+
+// Clawdbot gateway
+export const CLAWDBOT_GATEWAY_URL =
+  process.env.CLAWDBOT_GATEWAY_URL || 'http://127.0.0.1:18789/hooks/agent';
+export const CLAWDBOT_GATEWAY_TOKEN = envConfig.CLAWDBOT_GATEWAY_TOKEN ?? '';
 
 // Telegram limits
 export const MAX_MESSAGE_LENGTH = 4096;
