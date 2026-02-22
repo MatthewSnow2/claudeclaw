@@ -69,17 +69,21 @@ function spinner(
   };
 }
 
+// Single shared readline interface — never create more than one.
+// Creating a new rl per question corrupts stdin state and silently drops
+// pasted input after the first close().
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+  terminal: true,
+});
+
 async function ask(question: string, defaultVal?: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
   return new Promise((resolve) => {
     const prompt = defaultVal
       ? `  ${c.bold}${question}${c.reset} ${c.gray}(${defaultVal})${c.reset} › `
       : `  ${c.bold}${question}${c.reset} › `;
     rl.question(prompt, (ans) => {
-      rl.close();
       resolve(ans.trim() || defaultVal || '');
     });
   });
@@ -348,7 +352,26 @@ ELEVENLABS_VOICE_ID=${env.ELEVENLABS_VOICE_ID || ''}
 `;
 
   fs.writeFileSync(envPath, envContent, 'utf-8');
-  s7.stop('ok', 'Configuration saved to .env');
+
+  // Immediately verify what was written — catch any silent failures
+  const written = parseEnvFile(envPath);
+  const missingAfterWrite: string[] = [];
+  if (env.TELEGRAM_BOT_TOKEN && !written.TELEGRAM_BOT_TOKEN) missingAfterWrite.push('TELEGRAM_BOT_TOKEN');
+  if (env.ALLOWED_CHAT_ID && !written.ALLOWED_CHAT_ID) missingAfterWrite.push('ALLOWED_CHAT_ID');
+  if (env.GROQ_API_KEY && !written.GROQ_API_KEY) missingAfterWrite.push('GROQ_API_KEY');
+  if (env.ELEVENLABS_API_KEY && !written.ELEVENLABS_API_KEY) missingAfterWrite.push('ELEVENLABS_API_KEY');
+  if (env.ELEVENLABS_VOICE_ID && !written.ELEVENLABS_VOICE_ID) missingAfterWrite.push('ELEVENLABS_VOICE_ID');
+
+  if (missingAfterWrite.length > 0) {
+    s7.stop('warn', `Config saved but these keys were not written: ${missingAfterWrite.join(', ')}`);
+    console.log();
+    console.log(`  ${c.yellow}Add them manually to .env:${c.reset}`);
+    for (const key of missingAfterWrite) {
+      console.log(`  ${c.gray}echo "${key}=YOUR_VALUE" >> .env${c.reset}`);
+    }
+  } else {
+    s7.stop('ok', `Configuration saved to .env (${Object.keys(written).filter(k => written[k]).length} keys)`);
+  }
 
   // ── Step 8: launchd service (macOS) ──
   section('── Auto-start (macOS) ─────────────────────────');
@@ -497,7 +520,11 @@ function installLaunchd(dest: string) {
   }
 }
 
-main().catch((err) => {
-  console.error(`\n  ${c.red}Setup failed:${c.reset}`, err);
-  process.exit(1);
-});
+main()
+  .catch((err) => {
+    console.error(`\n  ${c.red}Setup failed:${c.reset}`, err);
+    process.exit(1);
+  })
+  .finally(() => {
+    rl.close();
+  });
