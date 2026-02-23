@@ -58,11 +58,13 @@ Pattern proven in `yce-harness`: "Agents don't share memory. Pass information be
   - Use `mcp-remote` stdio bridge (required for Claude SDK Task tool propagation)
   - Keys: `ARCADE_API_KEY`, `ARCADE_GATEWAY_SLUG`, `ARCADE_USER_ID` from `~/.env.shared`
 
-- [ ] **7b: Shared Linear project**
-  - Create a "Data + Chad Ops" Linear project (or reuse existing)
-  - Convention: issues tagged `#data` or `#chad` for ownership
-  - META issue: `[META] Bot Coordination Tracker` for global state
-  - Comment-based signals: "Done — result: {summary}" triggers the other bot
+- [x] **7b: Shared Linear project**
+  - Created "Bot Ops" project in M2AI_Workspace (cd32cd8e)
+  - Convention: issues tagged `data` or `chad` for ownership
+  - META issue: M2A-122 `[META] Bot Coordination Tracker` in Backlog
+  - Comment-based signals: "Done - result: {summary}" triggers the other bot
+  - Labels created: `data` (teal) and `chad` (orange) via Linear GraphQL API
+  - `LINEAR_API_KEY` added to `~/.env.shared` for direct API access
 
 - [ ] **7c: Clawdbot synchronous endpoint**
   - Replace fire-and-forget dispatch with request/response
@@ -87,6 +89,14 @@ Pattern proven in `yce-harness`: "Agents don't share memory. Pass information be
 - `yce-harness/agents/orchestrator.py` — Context routing between agents
 - `yce-harness/prompts/orchestrator_prompt.md` — "Agents don't share memory" philosophy
 - `yce-harness/linear_status.py` — Direct Linear API polling
+
+---
+
+## L5 Roadmap
+
+ClaudeClaw Phase 7 is part of the broader ST Metro Level 5 roadmap. Once complete, Data becomes the coordination hub for Metroplex (autonomous task dispatch), Sky-Lynx (self-improvement), and YCE Harness (build engine).
+
+See [`/home/apexaipc/projects/ST_METRO_ROADMAP.md`](../ST_METRO_ROADMAP.md) for the full L5 plan (Phases 7-11).
 
 ---
 
