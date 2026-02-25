@@ -2,13 +2,14 @@ import fs, { mkdirSync } from 'fs';
 import https from 'https';
 import path from 'path';
 import crypto from 'crypto';
+import { fileURLToPath } from 'url';
 
 import { readEnvFile } from './env.js';
 
 // ── Upload directory ────────────────────────────────────────────────────────
 
 export const UPLOADS_DIR = path.resolve(
-  path.dirname(new URL(import.meta.url).pathname),
+  path.dirname(fileURLToPath(import.meta.url)),
   '..',
   'workspace',
   'uploads',
@@ -120,7 +121,8 @@ export async function downloadTelegramFile(
   const fileBuffer = await httpsGet(downloadUrl);
 
   // Step 3: Save locally
-  const ext = path.extname(info.result.file_path) || '.ogg';
+  const rawExt = path.extname(info.result.file_path) || '.ogg';
+  const ext = rawExt === '.oga' ? '.ogg' : rawExt;
   const filename = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
   const localPath = path.join(destDir, filename);
   fs.writeFileSync(localPath, fileBuffer);

@@ -91,5 +91,6 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
   logger.error({ err }, 'Fatal error');
+  releaseLock();
   process.exit(1);
 });

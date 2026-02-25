@@ -150,6 +150,18 @@ export function buildDocumentMessage(localPath: string, filename: string, captio
 }
 
 /**
+ * Build the message text to send to Claude when a video is received.
+ */
+export function buildVideoMessage(localPath: string, caption?: string): string {
+  let msg = `Video received. File saved at: ${localPath}`;
+  if (caption) {
+    msg += `\nCaption: "${caption}"`;
+  }
+  msg += '\nUse the gemini-api-dev skill with the GOOGLE_API_KEY from .env to analyze this video if analysis is requested.';
+  return msg;
+}
+
+/**
  * Clean up old files from workspace/uploads/.
  * Deletes files older than maxAgeMs (default: 24 hours).
  */

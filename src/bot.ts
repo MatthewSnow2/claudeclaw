@@ -9,7 +9,7 @@ import {
 } from './config.js';
 import { clearSession, getRecentMemories, getSession, setSession } from './db.js';
 import { logger } from './logger.js';
-import { downloadMedia, buildPhotoMessage, buildDocumentMessage } from './media.js';
+import { downloadMedia, buildPhotoMessage, buildDocumentMessage, buildVideoMessage } from './media.js';
 import { buildMemoryContext, saveConversationTurn } from './memory.js';
 import { routeMessage } from './router.js';
 import {
@@ -22,6 +22,13 @@ import {
 
 // Per-chat voice mode toggle (in-memory, resets on restart)
 const voiceEnabledChats = new Set<string>();
+
+/**
+ * Escape HTML special characters for safe Telegram output.
+ */
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 /**
  * Scan outgoing text for patterns that look like API keys or secrets
@@ -326,7 +333,6 @@ export function createBot(): Bot {
       await ctx.reply('No memories yet.');
       return;
     }
-    const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const lines = recent.map(m => `<b>[${m.sector}]</b> ${escapeHtml(m.content)}`).join('\n');
     await ctx.reply(`<b>Recent memories</b>\n\n${lines}`, { parse_mode: 'HTML' });
   });
@@ -430,6 +436,59 @@ export function createBot(): Bot {
       clearInterval(typingInterval);
       logger.error({ err }, 'Document download failed');
       await ctx.reply('Could not download document. Try again.');
+    }
+  });
+
+  // Videos — download and pass to Claude
+  bot.on('message:video', async (ctx) => {
+    const chatId = ctx.chat!.id;
+    if (!isAuthorised(chatId, ctx.from?.id)) return;
+    if (!ALLOWED_CHAT_ID) {
+      await ctx.reply(
+        `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart EA-Claude.`,
+      );
+      return;
+    }
+
+    await sendTyping(ctx.api, chatId);
+    const typingInterval = setInterval(() => void sendTyping(ctx.api, chatId), TYPING_REFRESH_MS);
+    try {
+      const video = ctx.message.video;
+      const filename = video.file_name ?? 'video.mp4';
+      const localPath = await downloadMedia(TELEGRAM_BOT_TOKEN, video.file_id, filename);
+      clearInterval(typingInterval);
+      const msg = buildVideoMessage(localPath, ctx.message.caption ?? undefined);
+      await handleMessage(ctx, msg);
+    } catch (err) {
+      clearInterval(typingInterval);
+      logger.error({ err }, 'Video download failed');
+      await ctx.reply('Could not download video. Try again.');
+    }
+  });
+
+  // Video notes (round videos) — download and pass to Claude
+  bot.on('message:video_note', async (ctx) => {
+    const chatId = ctx.chat!.id;
+    if (!isAuthorised(chatId, ctx.from?.id)) return;
+    if (!ALLOWED_CHAT_ID) {
+      await ctx.reply(
+        `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart EA-Claude.`,
+      );
+      return;
+    }
+
+    await sendTyping(ctx.api, chatId);
+    const typingInterval = setInterval(() => void sendTyping(ctx.api, chatId), TYPING_REFRESH_MS);
+    try {
+      const vn = ctx.message.video_note;
+      const localPath = await downloadMedia(TELEGRAM_BOT_TOKEN, vn.file_id, 'video_note.mp4');
+      clearInterval(typingInterval);
+      const msg = buildVideoMessage(localPath);
+      await handleMessage(ctx, msg);
+    } catch (err) {
+      clearInterval(typingInterval);
+      logger.error({ err }, 'Video note download failed');
+      await ctx.reply('Could not download video note. Try again.');
     }
   });
 
