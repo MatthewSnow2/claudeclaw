@@ -80,6 +80,20 @@ function describeToolUse(
 const MAX_CONCURRENT_AGENTS = 1;
 let activeAgentCalls = 0;
 
+// Retry config for transient API errors (529 overloaded, 503 service unavailable)
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 10_000; // 10s, 20s, 40s
+
+function isRetryableError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return msg.includes('529') || msg.includes('overloaded') || msg.includes('503');
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * A minimal AsyncIterable that yields a single user message then closes.
  * This is the format the Claude Agent SDK expects for its `prompt` parameter.
@@ -132,7 +146,27 @@ export async function runAgent(
 
   activeAgentCalls++;
   try {
-    return await runAgentInner(message, sessionId, onTyping, onProgress);
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await runAgentInner(message, sessionId, onTyping, onProgress);
+      } catch (err) {
+        if (attempt < MAX_RETRIES && isRetryableError(err)) {
+          const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+          logger.warn(
+            { attempt: attempt + 1, maxRetries: MAX_RETRIES, delayMs: delay },
+            'API overloaded, retrying...',
+          );
+          if (onProgress) {
+            await onProgress(`API busy, retrying in ${delay / 1000}s...`).catch(() => {});
+          }
+          await sleep(delay);
+          continue;
+        }
+        throw err;
+      }
+    }
+    // Unreachable but TypeScript needs it
+    throw new Error('Retry loop exhausted');
   } finally {
     activeAgentCalls--;
   }
