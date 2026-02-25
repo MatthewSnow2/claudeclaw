@@ -8,6 +8,7 @@ import {
 import { logger } from './logger.js';
 import { runAgent } from './agent.js';
 import { formatForTelegram } from './bot.js';
+import * as telemetry from './telemetry.js';
 
 type Sender = (text: string) => Promise<void>;
 
@@ -34,11 +35,12 @@ async function runDueTasks(): Promise<void> {
 
   for (const task of tasks) {
     logger.info({ taskId: task.id, prompt: task.prompt.slice(0, 60) }, 'Firing task');
+    const taskStart = Date.now();
 
     try {
       await sender(`Scheduled task running: "${task.prompt.slice(0, 80)}${task.prompt.length > 80 ? '...' : ''}"`);
 
-      // Run as a fresh agent call (no session — scheduled tasks are autonomous)
+      // Run as a fresh agent call (no session -- scheduled tasks are autonomous)
       const result = await runAgent(task.prompt, undefined, () => {});
       const text = result.text?.trim() || 'Task completed with no output.';
 
@@ -47,11 +49,35 @@ async function runDueTasks(): Promise<void> {
       const nextRun = computeNextRun(task.schedule);
       updateTaskAfterRun(task.id, nextRun, text);
 
+      telemetry.emit({
+        timestamp: new Date().toISOString(),
+        event_type: 'scheduled_task_executed',
+        task_id: task.id,
+        prompt_preview: task.prompt.slice(0, 80),
+        success: true,
+        latency_ms: Date.now() - taskStart,
+      });
+
       logger.info({ taskId: task.id, nextRun }, 'Task complete, next run scheduled');
     } catch (err) {
       logger.error({ err, taskId: task.id }, 'Scheduled task failed');
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      telemetry.emit({
+        timestamp: new Date().toISOString(),
+        event_type: 'scheduled_task_executed',
+        task_id: task.id,
+        prompt_preview: task.prompt.slice(0, 80),
+        success: false,
+        latency_ms: Date.now() - taskStart,
+      });
+      telemetry.emit({
+        timestamp: new Date().toISOString(),
+        event_type: 'error',
+        error_source: 'scheduler',
+        error_message: errorMsg,
+      });
       try {
-        await sender(`Task failed: "${task.prompt.slice(0, 60)}..." — check logs.`);
+        await sender(`Task failed: "${task.prompt.slice(0, 60)}..." -- check logs.`);
       } catch {
         // ignore send failure
       }

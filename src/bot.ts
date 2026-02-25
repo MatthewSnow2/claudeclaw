@@ -12,6 +12,7 @@ import { logger } from './logger.js';
 import { downloadMedia, buildPhotoMessage, buildDocumentMessage, buildVideoMessage } from './media.js';
 import { buildMemoryContext, saveConversationTurn } from './memory.js';
 import { routeMessage } from './router.js';
+import * as telemetry from './telemetry.js';
 import {
   downloadTelegramFile,
   transcribeAudio,
@@ -196,6 +197,14 @@ async function handleMessage(ctx: Context, message: string): Promise<void> {
     'Processing message',
   );
 
+  telemetry.emit({
+    timestamp: new Date().toISOString(),
+    event_type: 'message_received',
+    chat_id: chatIdStr,
+    message_type: 'text',
+    message_length: message.length,
+  });
+
   // Route based on the ORIGINAL message (before memory context),
   // so @prefix detection works regardless of memory state.
   // Memory context is only useful for Claude, not external backends.
@@ -277,6 +286,13 @@ async function handleMessage(ctx: Context, message: string): Promise<void> {
     clearInterval(typingInterval);
     logger.error({ err }, 'Agent error');
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    telemetry.emit({
+      timestamp: new Date().toISOString(),
+      event_type: 'error',
+      chat_id: chatIdStr,
+      error_source: 'handleMessage',
+      error_message: errorMsg,
+    });
     await ctx.reply(`Something went wrong: ${redactSecrets(errorMsg)}`);
   }
 }
@@ -371,6 +387,14 @@ export function createBot(): Bot {
       return;
     }
 
+    telemetry.emit({
+      timestamp: new Date().toISOString(),
+      event_type: 'message_received',
+      chat_id: chatId.toString(),
+      message_type: 'voice',
+      message_length: ctx.message.voice.duration,
+    });
+
     await sendTyping(ctx.api, chatId);
     const typingInterval = setInterval(() => void sendTyping(ctx.api, chatId), TYPING_REFRESH_MS);
     try {
@@ -397,6 +421,14 @@ export function createBot(): Bot {
       return;
     }
 
+    telemetry.emit({
+      timestamp: new Date().toISOString(),
+      event_type: 'message_received',
+      chat_id: chatId.toString(),
+      message_type: 'photo',
+      message_length: ctx.message.caption?.length ?? 0,
+    });
+
     await sendTyping(ctx.api, chatId);
     const typingInterval = setInterval(() => void sendTyping(ctx.api, chatId), TYPING_REFRESH_MS);
     try {
@@ -422,6 +454,14 @@ export function createBot(): Bot {
       );
       return;
     }
+
+    telemetry.emit({
+      timestamp: new Date().toISOString(),
+      event_type: 'message_received',
+      chat_id: chatId.toString(),
+      message_type: 'document',
+      message_length: ctx.message.caption?.length ?? 0,
+    });
 
     await sendTyping(ctx.api, chatId);
     const typingInterval = setInterval(() => void sendTyping(ctx.api, chatId), TYPING_REFRESH_MS);
@@ -450,6 +490,14 @@ export function createBot(): Bot {
       return;
     }
 
+    telemetry.emit({
+      timestamp: new Date().toISOString(),
+      event_type: 'message_received',
+      chat_id: chatId.toString(),
+      message_type: 'video',
+      message_length: ctx.message.caption?.length ?? 0,
+    });
+
     await sendTyping(ctx.api, chatId);
     const typingInterval = setInterval(() => void sendTyping(ctx.api, chatId), TYPING_REFRESH_MS);
     try {
@@ -476,6 +524,14 @@ export function createBot(): Bot {
       );
       return;
     }
+
+    telemetry.emit({
+      timestamp: new Date().toISOString(),
+      event_type: 'message_received',
+      chat_id: chatId.toString(),
+      message_type: 'video_note',
+      message_length: 0,
+    });
 
     await sendTyping(ctx.api, chatId);
     const typingInterval = setInterval(() => void sendTyping(ctx.api, chatId), TYPING_REFRESH_MS);

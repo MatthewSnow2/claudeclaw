@@ -4,6 +4,7 @@ import { getArcadeMcpConfig, isArcadeConfigured } from './arcade-config.js';
 import { PROJECT_ROOT } from './config.js';
 import { readLocalEnvFile } from './env.js';
 import { logger } from './logger.js';
+import * as telemetry from './telemetry.js';
 
 export interface AgentResult {
   text: string | null;
@@ -149,6 +150,13 @@ async function runAgentInner(
   const secrets = readLocalEnvFile(['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']);
 
   const sdkEnv: Record<string, string | undefined> = { ...process.env };
+
+  // Remove nesting guard: PM2 may inherit CLAUDECODE / CLAUDE_CODE_ENTRYPOINT
+  // from the shell that originally started the process. The subprocess is
+  // independent and must not be blocked by the nested-session check.
+  delete sdkEnv.CLAUDECODE;
+  delete sdkEnv.CLAUDE_CODE_ENTRYPOINT;
+
   if (secrets.CLAUDE_CODE_OAUTH_TOKEN) {
     sdkEnv.CLAUDE_CODE_OAUTH_TOKEN = secrets.CLAUDE_CODE_OAUTH_TOKEN;
   }
@@ -215,11 +223,19 @@ async function runAgentInner(
         if (content) {
           for (const block of content) {
             if (block['type'] === 'tool_use') {
+              const toolName = block['name'] as string;
+              const toolInput = block['input'] as Record<string, unknown> | undefined;
+              const summary = describeToolUse(toolName, toolInput);
+
+              telemetry.emit({
+                timestamp: new Date().toISOString(),
+                event_type: 'tool_used',
+                tool_name: toolName,
+                tool_summary: summary ?? undefined,
+              });
+
               const now = Date.now();
               if (now - lastProgressTime >= PROGRESS_MIN_INTERVAL_MS) {
-                const toolName = block['name'] as string;
-                const toolInput = block['input'] as Record<string, unknown> | undefined;
-                const summary = describeToolUse(toolName, toolInput);
                 if (summary) {
                   lastProgressTime = now;
                   logger.debug({ toolName, summary }, 'Sending progress update');

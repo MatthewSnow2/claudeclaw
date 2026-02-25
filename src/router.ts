@@ -2,6 +2,7 @@ import { runAgent, type AgentResult } from './agent.js';
 
 import { callGemini, callOllama, callOpenAI, callPerplexity } from './llm-backends.js';
 import { logger } from './logger.js';
+import * as telemetry from './telemetry.js';
 
 export interface RouteResult {
   text: string;
@@ -80,17 +81,35 @@ export async function routeMessage(
 
   logger.info({ backend, messageLen: message.length }, 'Routing message');
 
+  telemetry.emit({
+    timestamp: new Date().toISOString(),
+    event_type: 'message_routed',
+    backend,
+    message_length: message.length,
+  });
+
+  const startTime = Date.now();
+
   switch (backend) {
     case 'claude': {
-      // For Claude, use the full memory-enriched message
       const result: AgentResult = await runAgent(
         fullMessage,
         sessionId,
         onTyping,
         onProgress,
       );
+      const text = result.text?.trim() || 'Done.';
+      telemetry.emit({
+        timestamp: new Date().toISOString(),
+        event_type: 'agent_completed',
+        backend: 'claude',
+        latency_ms: Date.now() - startTime,
+        success: true,
+        response_length: text.length,
+        session_id: result.newSessionId,
+      });
       return {
-        text: result.text?.trim() || 'Done.',
+        text,
         backend: 'claude',
         newSessionId: result.newSessionId,
       };
@@ -98,21 +117,53 @@ export async function routeMessage(
 
     case 'gemini': {
       const result = await callGemini(message);
+      telemetry.emit({
+        timestamp: new Date().toISOString(),
+        event_type: 'agent_completed',
+        backend: `gemini (${result.model})`,
+        latency_ms: Date.now() - startTime,
+        success: true,
+        response_length: result.text.length,
+      });
       return { text: result.text, backend: `gemini (${result.model})` };
     }
 
     case 'perplexity': {
       const result = await callPerplexity(message);
+      telemetry.emit({
+        timestamp: new Date().toISOString(),
+        event_type: 'agent_completed',
+        backend: `perplexity (${result.model})`,
+        latency_ms: Date.now() - startTime,
+        success: true,
+        response_length: result.text.length,
+      });
       return { text: result.text, backend: `perplexity (${result.model})` };
     }
 
     case 'ollama': {
       const result = await callOllama(message);
+      telemetry.emit({
+        timestamp: new Date().toISOString(),
+        event_type: 'agent_completed',
+        backend: `ollama (${result.model})`,
+        latency_ms: Date.now() - startTime,
+        success: true,
+        response_length: result.text.length,
+      });
       return { text: result.text, backend: `ollama (${result.model})` };
     }
 
     case 'openai': {
       const result = await callOpenAI(message);
+      telemetry.emit({
+        timestamp: new Date().toISOString(),
+        event_type: 'agent_completed',
+        backend: `openai (${result.model})`,
+        latency_ms: Date.now() - startTime,
+        success: true,
+        response_length: result.text.length,
+      });
       return { text: result.text, backend: `openai (${result.model})` };
     }
 

@@ -8,6 +8,7 @@ import { logger } from './logger.js';
 import { cleanupOldUploads } from './media.js';
 import { runDecaySweep } from './memory.js';
 import { initScheduler } from './scheduler.js';
+import { initTelemetry } from './telemetry.js';
 
 const PID_FILE = path.join(STORE_DIR, 'claudeclaw.pid');
 
@@ -44,6 +45,10 @@ function releaseLock(): void {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function main(): Promise<void> {
   if (!TELEGRAM_BOT_TOKEN) {
     logger.error('TELEGRAM_BOT_TOKEN is not set. Add it to .env and restart.');
@@ -52,6 +57,7 @@ async function main(): Promise<void> {
 
   acquireLock();
 
+  initTelemetry();
   initDatabase();
   logger.info('Database ready');
 
@@ -61,32 +67,73 @@ async function main(): Promise<void> {
 
   cleanupOldUploads();
 
-  const bot = createBot();
+  // Retry loop: create a fresh Bot instance each attempt to avoid grammyjs
+  // internal state leakage (reusing a Bot after a failed start can cause
+  // overlapping getUpdates connections that self-perpetuate 409 conflicts).
+  let attempt = 0;
+  let delay = 3000;
+  const MAX_DELAY = 35000; // > Telegram's 30s long-poll timeout
 
-  // Scheduler: sends results to Mark's chat
-  if (ALLOWED_CHAT_ID) {
-    initScheduler((text) => bot.api.sendMessage(ALLOWED_CHAT_ID, text, { parse_mode: 'HTML' }).then(() => {}));
+  while (true) {
+    attempt++;
+    const bot = createBot();
+
+    // Scheduler: sends results to Matthew's chat (re-bind on each new bot instance)
+    if (ALLOWED_CHAT_ID) {
+      initScheduler((text) => bot.api.sendMessage(ALLOWED_CHAT_ID, text, { parse_mode: 'HTML' }).then(() => {}));
+    }
+
+    // Graceful shutdown
+    const shutdown = async () => {
+      logger.info('Shutting down...');
+      releaseLock();
+      await bot.stop();
+      process.exit(0);
+    };
+    process.on('SIGINT', () => void shutdown());
+    process.on('SIGTERM', () => void shutdown());
+
+    try {
+      // Clear any stale webhook config
+      await bot.api.deleteWebhook({ drop_pending_updates: false });
+
+      logger.info({ attempt }, 'Starting EA-Claude...');
+
+      await bot.start({
+        onStart: (botInfo) => {
+          // Reset backoff on successful stable start
+          attempt = 0;
+          delay = 3000;
+          logger.info({ username: botInfo.username }, 'EA-Claude is running');
+          console.log(`\n  EA-Claude online: @${botInfo.username}`);
+          console.log(`  Send /chatid to get your chat ID for ALLOWED_CHAT_ID\n`);
+        },
+      });
+      return; // Clean exit (bot.stop() was called)
+    } catch (err: unknown) {
+      // Remove signal handlers from this bot instance before retrying
+      process.removeAllListeners('SIGINT');
+      process.removeAllListeners('SIGTERM');
+
+      const is409 =
+        err instanceof Error &&
+        err.message.includes('409') &&
+        err.message.includes('Conflict');
+
+      if (!is409) throw err; // Non-409 errors still crash immediately
+
+      logger.warn(
+        { attempt, delayMs: delay },
+        'getUpdates conflict. Waiting for stale connection to expire...',
+      );
+
+      // Stop the bot to clean up any internal polling state
+      try { await bot.stop(); } catch { /* ignore */ }
+
+      await sleep(delay);
+      delay = Math.min(delay * 2, MAX_DELAY);
+    }
   }
-
-  // Graceful shutdown
-  const shutdown = async () => {
-    logger.info('Shutting down...');
-    releaseLock();
-    await bot.stop();
-    process.exit(0);
-  };
-  process.on('SIGINT', () => void shutdown());
-  process.on('SIGTERM', () => void shutdown());
-
-  logger.info('Starting EA-Claude...');
-
-  await bot.start({
-    onStart: (botInfo) => {
-      logger.info({ username: botInfo.username }, 'EA-Claude is running');
-      console.log(`\n  EA-Claude online: @${botInfo.username}`);
-      console.log(`  Send /chatid to get your chat ID for ALLOWED_CHAT_ID\n`);
-    },
-  });
 }
 
 main().catch((err: unknown) => {
