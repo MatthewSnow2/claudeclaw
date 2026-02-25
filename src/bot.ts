@@ -179,7 +179,7 @@ async function handleMessage(ctx: Context, message: string): Promise<void> {
   // First-run setup guidance: ALLOWED_CHAT_ID not set yet
   if (!ALLOWED_CHAT_ID) {
     await ctx.reply(
-      `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart ClaudeClaw.`,
+      `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart EA-Claude.`,
     );
     return;
   }
@@ -206,10 +206,24 @@ async function handleMessage(ctx: Context, message: string): Promise<void> {
     const memCtx = await buildMemoryContext(chatIdStr, message);
     const fullMessage = memCtx ? `${memCtx}\n\n${message}` : message;
 
+    // Progress callback: send intermediate status updates to Telegram
+    // so the user knows what's happening during long operations.
+    const onProgress = async (status: string): Promise<void> => {
+      try {
+        await ctx.reply(`<i>${status}</i>`, { parse_mode: 'HTML' });
+      } catch {
+        // Best-effort — don't let progress updates break the main flow
+      }
+    };
+
     // Route using original message for @prefix detection,
     // pass full memory-enriched message for Claude backend
-    const result = await routeMessage(message, fullMessage, sessionId, () =>
-      void sendTyping(ctx.api, chatId),
+    const result = await routeMessage(
+      message,
+      fullMessage,
+      sessionId,
+      () => void sendTyping(ctx.api, chatId),
+      onProgress,
     );
 
     clearInterval(typingInterval);
@@ -274,11 +288,12 @@ export function createBot(): Bot {
 
   // /start — simple greeting
   bot.command('start', (ctx) =>
-    ctx.reply('ClaudeClaw online. What do you need?'),
+    ctx.reply('EA-Claude online. What do you need?'),
   );
 
   // /newchat — clear Claude session, start fresh
   bot.command('newchat', async (ctx) => {
+    if (!isAuthorised(ctx.chat!.id, ctx.from?.id)) return;
     clearSession(ctx.chat!.id.toString());
     await ctx.reply('Session cleared. Starting fresh.');
     logger.info({ chatId: ctx.chat!.id }, 'Session cleared by user');
@@ -286,6 +301,7 @@ export function createBot(): Bot {
 
   // /voice — toggle voice mode for this chat
   bot.command('voice', async (ctx) => {
+    if (!isAuthorised(ctx.chat!.id, ctx.from?.id)) return;
     const caps = voiceCapabilities();
     if (!caps.tts) {
       await ctx.reply('ElevenLabs not configured. Add ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to .env');
@@ -303,18 +319,21 @@ export function createBot(): Bot {
 
   // /memory — show recent memories for this chat
   bot.command('memory', async (ctx) => {
+    if (!isAuthorised(ctx.chat!.id, ctx.from?.id)) return;
     const chatId = ctx.chat!.id.toString();
     const recent = getRecentMemories(chatId, 10);
     if (recent.length === 0) {
       await ctx.reply('No memories yet.');
       return;
     }
-    const lines = recent.map(m => `<b>[${m.sector}]</b> ${m.content}`).join('\n');
+    const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = recent.map(m => `<b>[${m.sector}]</b> ${escapeHtml(m.content)}`).join('\n');
     await ctx.reply(`<b>Recent memories</b>\n\n${lines}`, { parse_mode: 'HTML' });
   });
 
   // /forget — clear session (memory decay handles the rest)
   bot.command('forget', async (ctx) => {
+    if (!isAuthorised(ctx.chat!.id, ctx.from?.id)) return;
     clearSession(ctx.chat!.id.toString());
     await ctx.reply('Session cleared. Memories will fade naturally over time.');
   });
@@ -341,7 +360,7 @@ export function createBot(): Bot {
     if (!isAuthorised(chatId, ctx.from?.id)) return;
     if (!ALLOWED_CHAT_ID) {
       await ctx.reply(
-        `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart ClaudeClaw.`,
+        `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart EA-Claude.`,
       );
       return;
     }
@@ -367,7 +386,7 @@ export function createBot(): Bot {
     if (!isAuthorised(chatId, ctx.from?.id)) return;
     if (!ALLOWED_CHAT_ID) {
       await ctx.reply(
-        `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart ClaudeClaw.`,
+        `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart EA-Claude.`,
       );
       return;
     }
@@ -393,7 +412,7 @@ export function createBot(): Bot {
     if (!isAuthorised(chatId, ctx.from?.id)) return;
     if (!ALLOWED_CHAT_ID) {
       await ctx.reply(
-        `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart ClaudeClaw.`,
+        `Your chat ID is ${chatId}.\n\nAdd this to your .env:\n\nALLOWED_CHAT_ID=${chatId}\n\nThen restart EA-Claude.`,
       );
       return;
     }

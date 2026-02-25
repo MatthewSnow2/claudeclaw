@@ -9,7 +9,6 @@ const envConfig = readEnvFile([
   'GROQ_API_KEY',
   'ELEVENLABS_API_KEY',
   'ELEVENLABS_VOICE_ID',
-  'CLAWDBOT_GATEWAY_TOKEN',
 ]);
 
 export const TELEGRAM_BOT_TOKEN =
@@ -33,16 +32,11 @@ export const ELEVENLABS_VOICE_ID = envConfig.ELEVENLABS_VOICE_ID ?? '';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// PROJECT_ROOT is the claudeclaw/ directory — where CLAUDE.md lives.
+// PROJECT_ROOT is the ea-claude/ directory — where CLAUDE.md lives.
 // The SDK uses this as cwd, which causes Claude Code to load our CLAUDE.md
 // and all global skills from ~/.claude/skills/ via settingSources.
 export const PROJECT_ROOT = path.resolve(__dirname, '..');
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
-
-// Clawdbot gateway
-export const CLAWDBOT_GATEWAY_URL =
-  process.env.CLAWDBOT_GATEWAY_URL || 'http://127.0.0.1:18789/hooks/agent';
-export const CLAWDBOT_GATEWAY_TOKEN = envConfig.CLAWDBOT_GATEWAY_TOKEN ?? '';
 
 // Telegram limits
 export const MAX_MESSAGE_LENGTH = 4096;

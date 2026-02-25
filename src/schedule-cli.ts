@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ClaudeClaw Schedule CLI
+ * EA-Claude Schedule CLI
  *
  * Used by Claudette via the Bash tool to manage scheduled tasks.
  *

@@ -1,5 +1,5 @@
 import { runAgent, type AgentResult } from './agent.js';
-import { dispatchToClawdbot } from './clawdbot-dispatch.js';
+
 import { callGemini, callOllama, callOpenAI, callPerplexity } from './llm-backends.js';
 import { logger } from './logger.js';
 
@@ -9,7 +9,7 @@ export interface RouteResult {
   newSessionId?: string;
 }
 
-type Backend = 'claude' | 'gemini' | 'perplexity' | 'ollama' | 'openai' | 'clawdbot' | 'ignore';
+type Backend = 'claude' | 'gemini' | 'perplexity' | 'ollama' | 'openai' | 'ignore';
 
 interface ParsedMessage {
   backend: Backend;
@@ -27,9 +27,6 @@ const PREFIX_MAP: Record<string, Backend> = {
   '@local': 'ollama',
   '@private': 'ollama',
   '@gpt': 'openai',
-  '@chad': 'clawdbot',
-  '@clawdbot': 'clawdbot',
-  '@m2ai_chad_bot': 'clawdbot',
 };
 
 /**
@@ -65,12 +62,14 @@ function parsePrefix(raw: string): ParsedMessage {
  * @param fullMessage      The message enriched with memory context (sent to Claude)
  * @param sessionId        Claude Code session ID to resume
  * @param onTyping         Typing indicator callback
+ * @param onProgress       Optional callback to send intermediate status updates to the user
  */
 export async function routeMessage(
   originalMessage: string,
   fullMessage: string,
   sessionId: string | undefined,
   onTyping: () => void,
+  onProgress?: (msg: string) => Promise<void>,
 ): Promise<RouteResult | null> {
   const { backend, message } = parsePrefix(originalMessage);
 
@@ -88,6 +87,7 @@ export async function routeMessage(
         fullMessage,
         sessionId,
         onTyping,
+        onProgress,
       );
       return {
         text: result.text?.trim() || 'Done.',
@@ -116,18 +116,5 @@ export async function routeMessage(
       return { text: result.text, backend: `openai (${result.model})` };
     }
 
-    case 'clawdbot': {
-      const dispatch = await dispatchToClawdbot(message);
-      if (dispatch.ok) {
-        return {
-          text: `Dispatched to Clawdbot.${dispatch.runId ? ` Run ID: ${dispatch.runId}` : ''} Check @m2ai_chad_bot for the response.`,
-          backend: 'clawdbot',
-        };
-      }
-      return {
-        text: `Clawdbot dispatch failed: ${dispatch.error || 'unknown error'}. Is the gateway running?`,
-        backend: 'clawdbot',
-      };
-    }
   }
 }

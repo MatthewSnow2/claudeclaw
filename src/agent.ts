@@ -10,6 +10,70 @@ export interface AgentResult {
   newSessionId: string | undefined;
 }
 
+/**
+ * Minimum interval between progress updates sent to Telegram (ms).
+ * Prevents message spam during rapid tool use.
+ */
+const PROGRESS_MIN_INTERVAL_MS = 15_000;
+
+/**
+ * Generate a human-readable summary of a tool invocation.
+ * Returns null for tools that shouldn't surface as progress (internal/noisy).
+ */
+function describeToolUse(
+  toolName: string,
+  input: Record<string, unknown> | undefined,
+): string | null {
+  switch (toolName) {
+    case 'Bash': {
+      const cmd = input?.['command'] as string | undefined;
+      if (cmd) {
+        const short = cmd.length > 80 ? cmd.slice(0, 80) + '...' : cmd;
+        return `Running: ${short}`;
+      }
+      return 'Running command...';
+    }
+    case 'Read': {
+      const fp = input?.['file_path'] as string | undefined;
+      if (fp) return `Reading ${fp.split('/').pop()}`;
+      return 'Reading file...';
+    }
+    case 'Write': {
+      const fp = input?.['file_path'] as string | undefined;
+      if (fp) return `Writing ${fp.split('/').pop()}`;
+      return 'Writing file...';
+    }
+    case 'Edit': {
+      const fp = input?.['file_path'] as string | undefined;
+      if (fp) return `Editing ${fp.split('/').pop()}`;
+      return 'Editing file...';
+    }
+    case 'Grep':
+    case 'Glob':
+      return 'Searching codebase...';
+    case 'WebSearch': {
+      const q = input?.['query'] as string | undefined;
+      if (q) return `Searching: ${q.slice(0, 60)}`;
+      return 'Searching the web...';
+    }
+    case 'WebFetch':
+      return 'Fetching web content...';
+    case 'Task':
+      return 'Launching sub-agent...';
+    case 'TodoWrite':
+    case 'ToolSearch':
+      return null; // Internal, skip
+    default:
+      if (toolName.startsWith('mcp__arcade__')) {
+        const parts = toolName.replace('mcp__arcade__', '').split('_');
+        const provider = parts[0];
+        const action = parts.slice(1).join(' ');
+        return `${provider}: ${action}`;
+      }
+      return null;
+  }
+}
+
 // Concurrency limiter: only 1 Claude subprocess at a time to avoid rate limit
 // collisions with interactive Claude Code sessions.
 const MAX_CONCURRENT_AGENTS = 1;
@@ -46,14 +110,16 @@ async function* singleTurn(text: string): AsyncGenerator<{
  * No explicit token needed if Mark is already logged in via `claude login`.
  * Optionally override with CLAUDE_CODE_OAUTH_TOKEN in .env.
  *
- * @param message   The user's text (may include transcribed voice prefix)
- * @param sessionId Claude Code session ID to resume, or undefined for new session
- * @param onTyping  Called every TYPING_REFRESH_MS while waiting — sends typing action to Telegram
+ * @param message    The user's text (may include transcribed voice prefix)
+ * @param sessionId  Claude Code session ID to resume, or undefined for new session
+ * @param onTyping   Called every TYPING_REFRESH_MS while waiting — sends typing action to Telegram
+ * @param onProgress Optional callback to send intermediate status updates to the user
  */
 export async function runAgent(
   message: string,
   sessionId: string | undefined,
   onTyping: () => void,
+  onProgress?: (msg: string) => Promise<void>,
 ): Promise<AgentResult> {
   if (activeAgentCalls >= MAX_CONCURRENT_AGENTS) {
     logger.warn({ activeAgentCalls }, 'Agent concurrency limit reached');
@@ -65,7 +131,7 @@ export async function runAgent(
 
   activeAgentCalls++;
   try {
-    return await runAgentInner(message, sessionId, onTyping);
+    return await runAgentInner(message, sessionId, onTyping, onProgress);
   } finally {
     activeAgentCalls--;
   }
@@ -75,6 +141,7 @@ async function runAgentInner(
   message: string,
   sessionId: string | undefined,
   onTyping: () => void,
+  onProgress?: (msg: string) => Promise<void>,
 ): Promise<AgentResult> {
   // Read auth overrides from LOCAL .env only (not ~/.env.shared).
   // ANTHROPIC_API_KEY in ~/.env.shared would override Max plan OAuth with API billing.
@@ -98,6 +165,7 @@ async function runAgentInner(
 
   let newSessionId: string | undefined;
   let resultText: string | null = null;
+  let lastProgressTime = 0;
 
   // Refresh typing indicator on an interval while Claude works.
   // Telegram's "typing..." action expires after ~5s.
@@ -112,7 +180,7 @@ async function runAgentInner(
     for await (const event of query({
       prompt: singleTurn(message),
       options: {
-        // cwd = claudeclaw project root so Claude Code loads our CLAUDE.md
+        // cwd = ea-claude project root so Claude Code loads our CLAUDE.md
         cwd: PROJECT_ROOT,
 
         // Resume the previous session for this chat (persistent context)
@@ -137,6 +205,30 @@ async function runAgentInner(
       if (ev['type'] === 'system' && ev['subtype'] === 'init') {
         newSessionId = ev['session_id'] as string;
         logger.info({ newSessionId }, 'Session initialized');
+      }
+
+      // Surface tool-use events as progress updates to Telegram.
+      // Rate-limited to avoid spamming the chat.
+      if (onProgress && ev['type'] === 'assistant') {
+        const msg = ev['message'] as Record<string, unknown> | undefined;
+        const content = msg?.['content'] as Array<Record<string, unknown>> | undefined;
+        if (content) {
+          for (const block of content) {
+            if (block['type'] === 'tool_use') {
+              const now = Date.now();
+              if (now - lastProgressTime >= PROGRESS_MIN_INTERVAL_MS) {
+                const toolName = block['name'] as string;
+                const toolInput = block['input'] as Record<string, unknown> | undefined;
+                const summary = describeToolUse(toolName, toolInput);
+                if (summary) {
+                  lastProgressTime = now;
+                  logger.debug({ toolName, summary }, 'Sending progress update');
+                  await onProgress(summary).catch(() => {});
+                }
+              }
+            }
+          }
+        }
       }
 
       if (ev['type'] === 'result') {

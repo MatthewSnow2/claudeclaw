@@ -1,7 +1,7 @@
-# ClaudeClaw - Hybrid AI Chief of Staff
+# EA-Claude - Hybrid AI Chief of Staff
 
 ## Overview
-ClaudeClaw ("Data") is a multi-LLM command center running as a Telegram bot, backed by Claude Code (Agent SDK) with @prefix routing to Gemini, Perplexity, Ollama, OpenAI, and Clawdbot.
+EA-Claude ("Data") is a multi-LLM command center running as a Telegram bot, backed by Claude Code (Agent SDK) with @prefix routing to Gemini, Perplexity, Ollama, OpenAI, and Clawdbot.
 
 ## Phase Checklist
 
@@ -32,7 +32,7 @@ Pattern proven in `yce-harness`: "Agents don't share memory. Pass information be
 ### Architecture
 
 ```
-  Data (ClaudeClaw)                    Chad (Clawdbot)
+  Data (EA-Claude)                    Chad (Clawdbot)
        |                                    |
        |  Arcade MCP (Linear tools)         |  Arcade MCP (Linear tools)
        v                                    v
@@ -53,8 +53,8 @@ Pattern proven in `yce-harness`: "Agents don't share memory. Pass information be
 
 ### Implementation Steps
 
-- [x] **7a: Arcade MCP for ClaudeClaw**
-  - Add Arcade MCP config to ClaudeClaw (adapt `yce-harness/arcade_config.py` pattern)
+- [x] **7a: Arcade MCP for EA-Claude**
+  - Add Arcade MCP config to EA-Claude (adapt `yce-harness/arcade_config.py` pattern)
   - Use `mcp-remote` stdio bridge (required for Claude SDK Task tool propagation)
   - Keys: `ARCADE_API_KEY`, `ARCADE_GATEWAY_SLUG`, `ARCADE_USER_ID` from `~/.env.shared`
 
@@ -94,7 +94,7 @@ Pattern proven in `yce-harness`: "Agents don't share memory. Pass information be
 
 ## L5 Roadmap
 
-ClaudeClaw Phase 7 is part of the broader ST Metro Level 5 roadmap. Once complete, Data becomes the coordination hub for Metroplex (autonomous task dispatch), Sky-Lynx (self-improvement), and YCE Harness (build engine).
+EA-Claude Phase 7 is part of the broader ST Metro Level 5 roadmap. Once complete, Data becomes the coordination hub for Metroplex (autonomous task dispatch), Sky-Lynx (self-improvement), and YCE Harness (build engine).
 
 See [`/home/apexaipc/projects/ST_METRO_ROADMAP.md`](../ST_METRO_ROADMAP.md) for the full L5 plan (Phases 7-11).
 
@@ -114,7 +114,7 @@ See [`/home/apexaipc/projects/ST_METRO_ROADMAP.md`](../ST_METRO_ROADMAP.md) for 
 
 ### Current (Phases 1-6)
 ```
-Matthew (Telegram) --> Data (ClaudeClaw) --> Claude Code (default)
+Matthew (Telegram) --> Data (EA-Claude) --> Claude Code (default)
                                         --> Gemini 2.0 Flash (@gemini)
                                         --> Perplexity Sonar (@research)
                                         --> Ollama local (@ollama/@local/@private)
