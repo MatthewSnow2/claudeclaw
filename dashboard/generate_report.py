@@ -23,6 +23,7 @@ DASHBOARD_DIR = Path(__file__).parent
 REPORTS_DIR = DASHBOARD_DIR / "reports"
 PIPELINE_FILE = PROJECTS_DIR / "claudeclaw" / "PIPELINE.md"
 TIMELINE_FILE = REPORTS_DIR / "timeline.json"
+ST_FACTORY_RECS = PROJECTS_DIR / "st-factory" / "data" / "improvement_recommendations.jsonl"
 
 # Projects to check for git status
 GIT_PROJECTS = [
@@ -315,6 +316,86 @@ def get_unfinished():
     return {"title": "Unfinished Business", "items": items}
 
 
+def get_soundwave_recommendations():
+    """Read improvement recommendations from ST Factory for operator review.
+
+    Soundwave surfaces these from Sky-Lynx analysis, IdeaForge signals,
+    and ST Factory metrics. Operator reviews and acts on them from dashboard.
+    """
+    items = []
+    if not ST_FACTORY_RECS.exists():
+        return {"title": "Soundwave Recommendations", "items": [
+            {"text": "No recommendations file found", "detail": "ST Factory not producing recs yet", "status": "info"}
+        ]}
+
+    try:
+        recs = []
+        for line in ST_FACTORY_RECS.read_text().strip().split("\n"):
+            if not line.strip():
+                continue
+            try:
+                recs.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+        # Filter out dry run examples
+        real_recs = [r for r in recs if "[DRY RUN]" not in r.get("title", "")]
+
+        if not real_recs:
+            return {"title": "Soundwave Recommendations", "items": [
+                {"text": "No actionable recommendations yet", "detail": "Sky-Lynx dry runs only so far", "status": "info"}
+            ]}
+
+        # Sort by priority (high > medium > low) then by date (newest first)
+        priority_order = {"high": 0, "medium": 1, "low": 2}
+        real_recs.sort(key=lambda r: (
+            priority_order.get(r.get("priority", "low"), 2),
+            r.get("emitted_at", "")
+        ))
+        real_recs.reverse()  # newest first within same priority
+        real_recs.sort(key=lambda r: priority_order.get(r.get("priority", "low"), 2))
+
+        for rec in real_recs[:10]:  # Cap at 10 most important
+            priority = rec.get("priority", "medium")
+            rec_type = rec.get("recommendation_type", "other")
+            target = rec.get("target_system", "")
+            status_val = rec.get("status", "pending")
+            desc = rec.get("description", "")
+            change = rec.get("suggested_change", "")
+            emitted = rec.get("emitted_at", "")[:10]
+
+            # Map priority to dashboard status
+            if status_val == "applied":
+                dot_status = "ok"
+            elif priority == "high":
+                dot_status = "warning"
+            else:
+                dot_status = "info"
+
+            detail_parts = []
+            if rec_type:
+                detail_parts.append(f"Type: {rec_type}")
+            if target:
+                detail_parts.append(f"Target: {target}")
+            if priority:
+                detail_parts.append(f"Priority: {priority}")
+            if emitted:
+                detail_parts.append(f"From: {emitted}")
+            if change:
+                detail_parts.append(f"Change: {change[:100]}")
+
+            items.append({
+                "text": rec.get("title", "Untitled recommendation"),
+                "detail": " | ".join(detail_parts),
+                "status": dot_status
+            })
+
+    except Exception as e:
+        items.append({"text": f"Error reading recommendations: {str(e)[:60]}", "detail": "", "status": "error"})
+
+    return {"title": "Soundwave Recommendations", "items": items}
+
+
 def update_timeline(completed_items):
     """Update timeline.json with today's completed count."""
     today = datetime.now().strftime("%Y-%m-%d")
@@ -366,6 +447,7 @@ def generate():
     uncommitted = check_uncommitted()
     priorities = get_priorities()
     unfinished = get_unfinished()
+    soundwave = get_soundwave_recommendations()
 
     report = {
         "timestamp": timestamp,
@@ -373,6 +455,7 @@ def generate():
         "sections": {
             "service_health": service_health,
             "pipeline": pipeline,
+            "soundwave": soundwave,
             "activity": activity,
             "uncommitted": uncommitted,
             "priorities": priorities,

@@ -282,6 +282,14 @@
   }
   .priority-output.visible { display: block; }
 
+  /* Soundwave section accent */
+  .section-card.soundwave-card {
+    border-left: 3px solid var(--info);
+  }
+  .section-card.soundwave-card .section-header h3 {
+    color: var(--info);
+  }
+
   /* Footer */
   .footer {
     text-align: center;
@@ -479,14 +487,14 @@ function renderSections() {
   const grid = document.getElementById('sections-grid');
   grid.innerHTML = '';
 
-  const sectionOrder = ['service_health', 'pipeline', 'activity', 'uncommitted', 'priorities', 'unfinished'];
+  const sectionOrder = ['service_health', 'pipeline', 'soundwave', 'activity', 'uncommitted', 'priorities', 'unfinished'];
 
   for (const key of sectionOrder) {
     const section = reportData.sections[key];
     if (!section) continue;
 
     const card = document.createElement('div');
-    card.className = 'section-card';
+    card.className = 'section-card' + (key === 'soundwave' ? ' soundwave-card' : '');
 
     const errCount = section.items.filter(i => i.status === 'error').length;
     const warnCount = section.items.filter(i => i.status === 'warning').length;
