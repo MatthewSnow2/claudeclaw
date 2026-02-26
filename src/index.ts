@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
+import { Api, RawApi } from 'grammy';
+
 import { createBot } from './bot.js';
 import { ALLOWED_CHAT_ID, STORE_DIR, TELEGRAM_BOT_TOKEN } from './config.js';
 import { initDatabase } from './db.js';
@@ -70,17 +72,32 @@ async function main(): Promise<void> {
   // Retry loop: create a fresh Bot instance each attempt to avoid grammyjs
   // internal state leakage (reusing a Bot after a failed start can cause
   // overlapping getUpdates connections that self-perpetuate 409 conflicts).
+  //
+  // KEY FIX: Initial delay must be >= 35s to outlast Telegram's 30s long-poll.
+  // The old 3s delay caused a permanent 409 loop where the new connection
+  // always collided with the still-alive old connection.
   let attempt = 0;
-  let delay = 3000;
-  const MAX_DELAY = 35000; // > Telegram's 30s long-poll timeout
+  let delay = 35000; // Must exceed Telegram's 30s long-poll timeout
+  const MAX_DELAY = 60000;
+  const MAX_409_RETRIES = 5; // Crash after this many to let PM2 do a clean restart
+
+  // Mutable ref so the scheduler sender always uses the latest bot API.
+  // Previous approach used a closure over a local var that never updated.
+  const botApiRef: { current: Api<RawApi> | null } = { current: null };
 
   while (true) {
     attempt++;
     const bot = createBot();
+    botApiRef.current = bot.api;
 
-    // Scheduler: sends results to Matthew's chat (re-bind on each new bot instance)
+    // Scheduler: initScheduler is idempotent (clears old interval).
+    // The sender closure reads botApiRef.current, which always points
+    // to the latest bot instance's API.
     if (ALLOWED_CHAT_ID) {
-      initScheduler((text) => bot.api.sendMessage(ALLOWED_CHAT_ID, text, { parse_mode: 'HTML' }).then(() => {}));
+      initScheduler((text) => {
+        if (!botApiRef.current) return Promise.resolve();
+        return botApiRef.current.sendMessage(ALLOWED_CHAT_ID, text, { parse_mode: 'HTML' }).then(() => {});
+      });
     }
 
     // Graceful shutdown
@@ -94,17 +111,27 @@ async function main(): Promise<void> {
     process.on('SIGTERM', () => void shutdown());
 
     try {
-      // Clear any stale webhook config
-      await bot.api.deleteWebhook({ drop_pending_updates: false });
+      // Drop pending updates on retry to prevent re-processing messages
+      // that were already handled before the 409 cycle.
+      const dropPending = attempt > 1;
+      await bot.api.deleteWebhook({ drop_pending_updates: dropPending });
+      if (dropPending) {
+        logger.info('Dropped pending updates after 409 recovery');
+      }
 
-      logger.info({ attempt }, 'Starting EA-Claude...');
+      logger.info({ attempt, dropPending }, 'Starting EA-Claude...');
 
       await bot.start({
         onStart: (botInfo) => {
-          // Reset backoff on successful stable start
-          attempt = 0;
-          delay = 3000;
-          logger.info({ username: botInfo.username }, 'EA-Claude is running');
+          // DON'T reset backoff immediately -- the 409 can arrive 30s after
+          // onStart fires. Schedule a delayed reset so backoff only clears
+          // after the connection has been stable for 90s.
+          setTimeout(() => {
+            attempt = 0;
+            delay = 35000;
+            logger.info('Backoff reset after stable connection (90s)');
+          }, 90_000);
+          logger.info({ username: botInfo.username, attempt }, 'EA-Claude is running');
           console.log(`\n  EA-Claude online: @${botInfo.username}`);
           console.log(`  Send /chatid to get your chat ID for ALLOWED_CHAT_ID\n`);
         },
@@ -122,8 +149,16 @@ async function main(): Promise<void> {
 
       if (!is409) throw err; // Non-409 errors still crash immediately
 
+      if (attempt >= MAX_409_RETRIES) {
+        logger.error(
+          { attempt, maxRetries: MAX_409_RETRIES },
+          '409 conflict persists after max retries. Crashing for PM2 clean restart.',
+        );
+        throw err;
+      }
+
       logger.warn(
-        { attempt, delayMs: delay },
+        { attempt, delayMs: delay, maxRetries: MAX_409_RETRIES },
         'getUpdates conflict. Waiting for stale connection to expire...',
       );
 
@@ -131,7 +166,7 @@ async function main(): Promise<void> {
       try { await bot.stop(); } catch { /* ignore */ }
 
       await sleep(delay);
-      delay = Math.min(delay * 2, MAX_DELAY);
+      delay = Math.min(delay * 1.5, MAX_DELAY);
     }
   }
 }

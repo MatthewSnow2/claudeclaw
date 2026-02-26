@@ -22,3 +22,6 @@ workspace/
 .vscode/
 .idea/
 *.swp
+
+# Dashboard — generated reports (runtime data, not source)
+dashboard/reports/*.json

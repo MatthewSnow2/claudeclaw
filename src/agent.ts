@@ -191,9 +191,18 @@ async function runAgentInner(
   delete sdkEnv.CLAUDECODE;
   delete sdkEnv.CLAUDE_CODE_ENTRYPOINT;
 
+  // Strip any ANTHROPIC_API_KEY inherited from PM2's environment (loaded from
+  // ~/.env.shared at startup). Without this, the subprocess would bill against
+  // the API even when the local .env doesn't explicitly set the key.
+  // The claude CLI subprocess will fall back to ~/.claude/.credentials.json
+  // (Max plan OAuth) once the API key is absent from its environment.
+  delete sdkEnv.ANTHROPIC_API_KEY;
+
   if (secrets.CLAUDE_CODE_OAUTH_TOKEN) {
     sdkEnv.CLAUDE_CODE_OAUTH_TOKEN = secrets.CLAUDE_CODE_OAUTH_TOKEN;
   }
+  // Only re-add ANTHROPIC_API_KEY if the LOCAL .env explicitly sets it
+  // (i.e. you want to override Max plan with a specific API key).
   if (secrets.ANTHROPIC_API_KEY) {
     sdkEnv.ANTHROPIC_API_KEY = secrets.ANTHROPIC_API_KEY;
   }
@@ -207,6 +216,7 @@ async function runAgentInner(
 
   let newSessionId: string | undefined;
   let resultText: string | null = null;
+  let resultReceived = false; // Guard against duplicate result events from SDK
   let lastProgressTime = 0;
 
   // Refresh typing indicator on an interval while Claude works.
@@ -245,8 +255,11 @@ async function runAgentInner(
       const ev = event as Record<string, unknown>;
 
       if (ev['type'] === 'system' && ev['subtype'] === 'init') {
-        newSessionId = ev['session_id'] as string;
-        logger.info({ newSessionId }, 'Session initialized');
+        // SDK may emit multiple init events (e.g. on resume). Only log first.
+        if (!newSessionId) {
+          newSessionId = ev['session_id'] as string;
+          logger.info({ newSessionId }, 'Session initialized');
+        }
       }
 
       // Surface tool-use events as progress updates to Telegram.
@@ -282,6 +295,12 @@ async function runAgentInner(
       }
 
       if (ev['type'] === 'result') {
+        if (resultReceived) {
+          // SDK sometimes emits duplicate result events. Ignore subsequent ones.
+          logger.warn('Duplicate result event from SDK -- ignoring');
+          continue;
+        }
+        resultReceived = true;
         resultText = (ev['result'] as string | null | undefined) ?? null;
         logger.info(
           { hasResult: !!resultText, subtype: ev['subtype'] },

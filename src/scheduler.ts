@@ -15,7 +15,15 @@ type Sender = (text: string) => Promise<void>;
 let sender: Sender;
 
 /**
- * Initialise the scheduler. Call once after the Telegram bot is ready.
+ * Track the scheduler interval so we can clear it on re-init.
+ * Without this, each 409 retry loop spawns a NEW parallel interval,
+ * leading to N concurrent schedulers all firing runDueTasks().
+ */
+let schedulerInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Initialise the scheduler. Safe to call multiple times (idempotent).
+ * Clears any previous interval before creating a new one.
  * @param send  Function that sends a message to Mark's Telegram chat.
  */
 export function initScheduler(send: Sender): void {
@@ -23,7 +31,14 @@ export function initScheduler(send: Sender): void {
     logger.warn('ALLOWED_CHAT_ID not set — scheduler will not send results');
   }
   sender = send;
-  setInterval(() => void runDueTasks(), 60_000);
+
+  // Clear previous interval to prevent duplicate schedulers on 409 retry
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    logger.info('Cleared previous scheduler interval');
+  }
+
+  schedulerInterval = setInterval(() => void runDueTasks(), 60_000);
   logger.info('Scheduler started (checking every 60s)');
 }
 

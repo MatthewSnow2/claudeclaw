@@ -25,6 +25,30 @@ import {
 const voiceEnabledChats = new Set<string>();
 
 /**
+ * Message deduplication cache.
+ * Tracks Telegram message_ids that have already been dispatched to handleMessage().
+ * Prevents re-processing when the bot restarts during a 409 conflict cycle and
+ * picks up the same pending updates again.
+ *
+ * Entries auto-expire after 5 minutes to prevent unbounded growth.
+ */
+const processedMessages = new Map<number, number>(); // message_id -> timestamp
+const DEDUP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function isDuplicate(messageId: number): boolean {
+  const now = Date.now();
+  // Prune expired entries periodically (every check is fine, map is small)
+  if (processedMessages.size > 100) {
+    for (const [id, ts] of processedMessages) {
+      if (now - ts > DEDUP_TTL_MS) processedMessages.delete(id);
+    }
+  }
+  if (processedMessages.has(messageId)) return true;
+  processedMessages.set(messageId, now);
+  return false;
+}
+
+/**
  * Escape HTML special characters for safe Telegram output.
  */
 function escapeHtml(s: string): string {
@@ -363,6 +387,11 @@ export function createBot(): Bot {
   // Text messages — and any slash commands not owned by this bot (skills, e.g. /todo /gmail)
   const OWN_COMMANDS = new Set(['/start', '/newchat', '/voice', '/memory', '/forget', '/chatid']);
   bot.on('message:text', async (ctx) => {
+    // Dedup: skip if we already processed this message (409 restart replay)
+    if (isDuplicate(ctx.message.message_id)) {
+      logger.debug({ messageId: ctx.message.message_id }, 'Skipping duplicate message');
+      return;
+    }
     const text = ctx.message.text;
     if (text.startsWith('/')) {
       const cmd = text.split(/[\s@]/)[0].toLowerCase();
@@ -373,6 +402,7 @@ export function createBot(): Bot {
 
   // Voice messages — real transcription via Groq Whisper
   bot.on('message:voice', async (ctx) => {
+    if (isDuplicate(ctx.message.message_id)) return;
     const caps = voiceCapabilities();
     if (!caps.stt) {
       await ctx.reply('Voice transcription not configured. Add GROQ_API_KEY to .env');
@@ -412,6 +442,7 @@ export function createBot(): Bot {
 
   // Photos — download and pass to Claude
   bot.on('message:photo', async (ctx) => {
+    if (isDuplicate(ctx.message.message_id)) return;
     const chatId = ctx.chat!.id;
     if (!isAuthorised(chatId, ctx.from?.id)) return;
     if (!ALLOWED_CHAT_ID) {
@@ -446,6 +477,7 @@ export function createBot(): Bot {
 
   // Documents — download and pass to Claude
   bot.on('message:document', async (ctx) => {
+    if (isDuplicate(ctx.message.message_id)) return;
     const chatId = ctx.chat!.id;
     if (!isAuthorised(chatId, ctx.from?.id)) return;
     if (!ALLOWED_CHAT_ID) {
@@ -481,6 +513,7 @@ export function createBot(): Bot {
 
   // Videos — download and pass to Claude
   bot.on('message:video', async (ctx) => {
+    if (isDuplicate(ctx.message.message_id)) return;
     const chatId = ctx.chat!.id;
     if (!isAuthorised(chatId, ctx.from?.id)) return;
     if (!ALLOWED_CHAT_ID) {
@@ -516,6 +549,7 @@ export function createBot(): Bot {
 
   // Video notes (round videos) — download and pass to Claude
   bot.on('message:video_note', async (ctx) => {
+    if (isDuplicate(ctx.message.message_id)) return;
     const chatId = ctx.chat!.id;
     if (!isAuthorised(chatId, ctx.from?.id)) return;
     if (!ALLOWED_CHAT_ID) {
