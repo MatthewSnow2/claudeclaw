@@ -23,7 +23,11 @@ DASHBOARD_DIR = Path(__file__).parent
 REPORTS_DIR = DASHBOARD_DIR / "reports"
 PIPELINE_FILE = PROJECTS_DIR / "claudeclaw" / "PIPELINE.md"
 TIMELINE_FILE = REPORTS_DIR / "timeline.json"
-ST_FACTORY_RECS = PROJECTS_DIR / "st-factory" / "data" / "improvement_recommendations.jsonl"
+ST_FACTORY_DIR = PROJECTS_DIR / "st-factory" / "data"
+ST_FACTORY_RECS = ST_FACTORY_DIR / "improvement_recommendations.jsonl"
+ST_FACTORY_PATCHES = ST_FACTORY_DIR / "persona_patches.jsonl"
+ST_FACTORY_SIGNALS = ST_FACTORY_DIR / "research_signals.jsonl"
+METROPLEX_DB = PROJECTS_DIR / "metroplex" / "data" / "metroplex.db"
 
 # Projects to check for git status
 GIT_PROJECTS = [
@@ -316,6 +320,21 @@ def get_unfinished():
     return {"title": "Unfinished Business", "items": items}
 
 
+def _read_jsonl(path):
+    """Read a JSONL file into a list of dicts."""
+    items = []
+    if not path.exists():
+        return items
+    for line in path.read_text().strip().split("\n"):
+        if not line.strip():
+            continue
+        try:
+            items.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return items
+
+
 def get_soundwave_recommendations():
     """Read improvement recommendations from ST Factory for operator review.
 
@@ -323,77 +342,139 @@ def get_soundwave_recommendations():
     and ST Factory metrics. Operator reviews and acts on them from dashboard.
     """
     items = []
-    if not ST_FACTORY_RECS.exists():
-        return {"title": "Soundwave Recommendations", "items": [
-            {"text": "No recommendations file found", "detail": "ST Factory not producing recs yet", "status": "info"}
-        ]}
 
+    # --- 1. Improvement Recommendations (Sky-Lynx) ---
+    recs = _read_jsonl(ST_FACTORY_RECS)
+    real_recs = [r for r in recs if "[DRY RUN]" not in r.get("title", "")]
+
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    real_recs.sort(key=lambda r: (
+        priority_order.get(r.get("priority", "low"), 2),
+        r.get("emitted_at", "")
+    ))
+    real_recs.reverse()
+    real_recs.sort(key=lambda r: priority_order.get(r.get("priority", "low"), 2))
+
+    for rec in real_recs[:6]:
+        priority = rec.get("priority", "medium")
+        status_val = rec.get("status", "pending")
+        rec_type = rec.get("recommendation_type", "other")
+        change = rec.get("suggested_change", "")
+        emitted = rec.get("emitted_at", "")[:10]
+
+        if status_val == "applied":
+            dot_status = "ok"
+        elif priority == "high":
+            dot_status = "warning"
+        else:
+            dot_status = "info"
+
+        detail_parts = [f"[REC] {rec_type}"]
+        if priority:
+            detail_parts.append(f"Priority: {priority}")
+        if emitted:
+            detail_parts.append(f"From: {emitted}")
+        if change:
+            detail_parts.append(f"Change: {change[:80]}")
+
+        items.append({
+            "text": rec.get("title", "Untitled recommendation"),
+            "detail": " | ".join(detail_parts),
+            "status": dot_status
+        })
+
+    # --- 2. Metroplex Priority Queue (stuck/dispatched items) ---
     try:
-        recs = []
-        for line in ST_FACTORY_RECS.read_text().strip().split("\n"):
-            if not line.strip():
-                continue
-            try:
-                recs.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
+        import sqlite3
+        if METROPLEX_DB.exists():
+            db = sqlite3.connect(str(METROPLEX_DB))
+            db.row_factory = sqlite3.Row
 
-        # Filter out dry run examples
-        real_recs = [r for r in recs if "[DRY RUN]" not in r.get("title", "")]
+            # Dispatched items (may be stuck)
+            dispatched = db.execute(
+                "SELECT title, source, priority_score, dispatched_at FROM priority_queue WHERE status='dispatched' ORDER BY priority_score DESC LIMIT 5"
+            ).fetchall()
+            for row in dispatched:
+                age = ""
+                if row["dispatched_at"]:
+                    try:
+                        dt = datetime.fromisoformat(row["dispatched_at"])
+                        hours = (datetime.now() - dt).total_seconds() / 3600
+                        age = f" ({hours:.0f}h ago)" if hours > 1 else " (recent)"
+                    except Exception:
+                        pass
+                items.append({
+                    "text": f"[QUEUE] {row['title'][:60]}",
+                    "detail": f"Source: {row['source']} | Score: {row['priority_score']:.1f} | Dispatched{age}",
+                    "status": "warning"
+                })
 
-        if not real_recs:
-            return {"title": "Soundwave Recommendations", "items": [
-                {"text": "No actionable recommendations yet", "detail": "Sky-Lynx dry runs only so far", "status": "info"}
-            ]}
+            # Pending items
+            pending = db.execute(
+                "SELECT title, source, priority_score FROM priority_queue WHERE status='pending' ORDER BY priority_score DESC LIMIT 3"
+            ).fetchall()
+            for row in pending:
+                items.append({
+                    "text": f"[QUEUE] {row['title'][:60]}",
+                    "detail": f"Source: {row['source']} | Score: {row['priority_score']:.1f} | Waiting for dispatch",
+                    "status": "info"
+                })
 
-        # Sort by priority (high > medium > low) then by date (newest first)
-        priority_order = {"high": 0, "medium": 1, "low": 2}
-        real_recs.sort(key=lambda r: (
-            priority_order.get(r.get("priority", "low"), 2),
-            r.get("emitted_at", "")
-        ))
-        real_recs.reverse()  # newest first within same priority
-        real_recs.sort(key=lambda r: priority_order.get(r.get("priority", "low"), 2))
+            # Failed items (need attention)
+            failed = db.execute(
+                "SELECT title, source FROM priority_queue WHERE status='failed' ORDER BY completed_at DESC LIMIT 3"
+            ).fetchall()
+            for row in failed:
+                items.append({
+                    "text": f"[QUEUE FAILED] {row['title'][:60]}",
+                    "detail": f"Source: {row['source']} | Build failed - needs review",
+                    "status": "error"
+                })
 
-        for rec in real_recs[:10]:  # Cap at 10 most important
-            priority = rec.get("priority", "medium")
-            rec_type = rec.get("recommendation_type", "other")
-            target = rec.get("target_system", "")
-            status_val = rec.get("status", "pending")
-            desc = rec.get("description", "")
-            change = rec.get("suggested_change", "")
-            emitted = rec.get("emitted_at", "")[:10]
-
-            # Map priority to dashboard status
-            if status_val == "applied":
-                dot_status = "ok"
-            elif priority == "high":
-                dot_status = "warning"
-            else:
-                dot_status = "info"
-
-            detail_parts = []
-            if rec_type:
-                detail_parts.append(f"Type: {rec_type}")
-            if target:
-                detail_parts.append(f"Target: {target}")
-            if priority:
-                detail_parts.append(f"Priority: {priority}")
-            if emitted:
-                detail_parts.append(f"From: {emitted}")
-            if change:
-                detail_parts.append(f"Change: {change[:100]}")
-
-            items.append({
-                "text": rec.get("title", "Untitled recommendation"),
-                "detail": " | ".join(detail_parts),
-                "status": dot_status
-            })
-
+            db.close()
     except Exception as e:
-        items.append({"text": f"Error reading recommendations: {str(e)[:60]}", "detail": "", "status": "error"})
+        items.append({"text": f"Metroplex DB error: {str(e)[:50]}", "detail": "", "status": "error"})
 
-    return {"title": "Soundwave Recommendations", "items": items}
+    # --- 3. Persona Patches (pending review) ---
+    patches = _read_jsonl(ST_FACTORY_PATCHES)
+    pending_patches = [p for p in patches if p.get("status") in ("pending", "proposed")]
+    for patch in pending_patches[:3]:
+        persona = patch.get("persona_id", "unknown")
+        rationale = patch.get("rationale", "")[:80]
+        patch_id = patch.get("patch_id", "")[:12]
+        version = f"{patch.get('from_version', '?')} -> {patch.get('to_version', '?')}"
+        ops = [p.get("operation", "?") + " " + p.get("path", "?") for p in patch.get("patches", [])]
+        ops_str = ", ".join(ops[:2])
+        items.append({
+            "text": f"[PATCH] {persona} ({version}): {ops_str}",
+            "detail": rationale,
+            "status": "warning"
+        })
+
+    # --- 4. High-scoring Research Signals (latest, need attention) ---
+    signals = _read_jsonl(ST_FACTORY_SIGNALS)
+    # Get recent high-quality signals (last 7 days, score > 0.7)
+    cutoff = (datetime.now() - timedelta(days=7)).isoformat()
+    recent_signals = [
+        s for s in signals
+        if s.get("quality_score", 0) > 0.7
+        and s.get("ingested_at", "") > cutoff
+    ]
+    recent_signals.sort(key=lambda s: s.get("quality_score", 0), reverse=True)
+    for sig in recent_signals[:3]:
+        score = sig.get("quality_score", 0)
+        source = sig.get("source_agent", "unknown")
+        title = sig.get("title", sig.get("signal_type", "Signal"))[:60]
+        items.append({
+            "text": f"[SIGNAL] {title}",
+            "detail": f"Source: {source} | Quality: {score:.2f}",
+            "status": "info"
+        })
+
+    if not items:
+        items.append({"text": "No actionable items", "detail": "System quiet - no recommendations, queue items, or signals needing attention", "status": "ok"})
+
+    return {"title": "Soundwave - Operator Review", "items": items}
 
 
 def update_timeline(completed_items):

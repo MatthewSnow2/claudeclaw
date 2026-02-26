@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VigilAI Competition Intelligence Report</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0F1117;
+    --card: #1A1D27;
+    --card-border: #2A2D3A;
+    --text: #E8E9ED;
+    --text-secondary: #8B8FA3;
+    --accent: #E8735A;
+    --accent-light: rgba(232, 115, 90, 0.15);
+    --green: #10B981;
+    --green-bg: rgba(16, 185, 129, 0.12);
+    --yellow: #F59E0B;
+    --yellow-bg: rgba(245, 158, 11, 0.12);
+    --red: #EF4444;
+    --red-bg: rgba(239, 68, 68, 0.12);
+    --blue: #6366F1;
+    --blue-bg: rgba(99, 102, 241, 0.12);
+    --cyan: #06B6D4;
+    --cyan-bg: rgba(6, 182, 212, 0.12);
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 32px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--card-border);
+  }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+  .header h1 .accent { color: var(--accent); }
+  .header .subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+  .header .date {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+  }
+
+  /* Decision banner */
+  .decision-banner {
+    background: linear-gradient(135deg, var(--accent-light), rgba(99, 102, 241, 0.1));
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 32px;
+  }
+  .decision-banner h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .decision-banner p {
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.7;
+  }
+
+  /* Competition cards */
+  .comp-card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+  .comp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--card-border);
+  }
+  .comp-header h3 {
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .comp-badge {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+  .badge-high { background: var(--green-bg); color: var(--green); }
+  .badge-medium { background: var(--yellow-bg); color: var(--yellow); }
+  .badge-low { background: var(--red-bg); color: var(--red); }
+  .badge-info { background: var(--blue-bg); color: var(--blue); }
+
+  .comp-body { padding: 20px 24px; }
+
+  .comp-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .meta-item {
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    padding: 12px 16px;
+  }
+  .meta-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+  .meta-value {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  /* Pros/Cons */
+  .pros-cons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .pros, .cons {
+    padding: 16px;
+    border-radius: 8px;
+  }
+  .pros { background: var(--green-bg); }
+  .cons { background: var(--red-bg); }
+  .pros h4 { color: var(--green); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .cons h4 { color: var(--red); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .pros li, .cons li {
+    font-size: 13px;
+    margin-bottom: 6px;
+    padding-left: 4px;
+    list-style: none;
+  }
+  .pros li::before { content: "+  "; color: var(--green); font-weight: 700; }
+  .cons li::before { content: "-  "; color: var(--red); font-weight: 700; }
+
+  /* Disqualifier alerts */
+  .alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+  .alert-red {
+    background: var(--red-bg);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+  .alert-yellow {
+    background: var(--yellow-bg);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+  .alert-green {
+    background: var(--green-bg);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+  .alert-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+    line-height: 1;
+    margin-top: 1px;
+  }
+  .alert-content { flex: 1; }
+  .alert-title {
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .alert-red .alert-title { color: var(--red); }
+  .alert-yellow .alert-title { color: var(--yellow); }
+  .alert-green .alert-title { color: var(--green); }
+
+  /* Comparison table */
+  .comparison {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-size: 13px;
+  }
+  .comparison th {
+    text-align: left;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--card-border);
+  }
+  .comparison td {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: top;
+  }
+  .comparison tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* Timeline */
+  .timeline {
+    position: relative;
+    padding-left: 24px;
+    margin: 20px 0;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 4px;
+    bottom: 4px;
+    width: 2px;
+    background: var(--card-border);
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 16px;
+    padding-left: 16px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -22px;
+    top: 7px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg);
+  }
+  .timeline-date {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    margin-bottom: 2px;
+  }
+  .timeline-text {
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  /* Section headers */
+  .section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 32px 0 16px 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--card-border);
+  }
+
+  /* Action items */
+  .actions {
+    background: var(--card);
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 32px;
+  }
+  .actions h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  .action-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-size: 14px;
+  }
+  .action-item:last-child { border-bottom: none; }
+  .action-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* Source links */
+  .sources {
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid var(--card-border);
+  }
+  .sources h4 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+  .sources a {
+    display: block;
+    color: var(--blue);
+    font-size: 12px;
+    text-decoration: none;
+    margin-bottom: 6px;
+    word-break: break-all;
+  }
+  .sources a:hover { text-decoration: underline; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    body { padding: 16px; }
+    .pros-cons { grid-template-columns: 1fr; }
+    .comp-meta { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>VigilAI <span class="accent">Competition Intelligence</span></h1>
+  <div class="subtitle">AI Combat & Autonomous Systems Competitions - Eligibility Analysis for M2AI</div>
+  <div class="date">Generated 2026-02-26 | Decision: DUAL TRACK (Ship DCS mod + Enter competitions)</div>
+</div>
+
+<!-- Decision Summary -->
+<div class="decision-banner">
+  <h2>Bottom Line Up Front</h2>
+  <p>
+    <strong>Anduril AI Grand Prix</strong> is the clear primary target. Open to individuals, Python-based, $500K prize pool, no clearance needed, virtual qualification from home. Registration is free and opens May 2026.
+    <br><br>
+    <strong>LM AI Fight Club</strong> is high-value but has unknowns. Likely requires DOW clearance or restricted access to their proprietary sim. Email them TODAY to clarify before investing time. If clearance is needed, this may be a non-starter for a solo consultancy.
+    <br><br>
+    <strong>BVR Gym</strong> is the training ground. Use it now to build RL skills and portfolio pieces while waiting for competition registrations to open.
+  </p>
+</div>
+
+<!-- Side-by-side comparison -->
+<h2 class="section-title">Quick Comparison</h2>
+
+<table class="comparison">
+  <thead>
+    <tr>
+      <th>Factor</th>
+      <th>LM AI Fight Club</th>
+      <th>Anduril AI Grand Prix</th>
+      <th>BVR Gym (Academic)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Format</strong></td>
+      <td>4v4 AI air combat (4th gen fighters)</td>
+      <td>Autonomous drone racing (time trial)</td>
+      <td>BVR air combat RL environment</td>
+    </tr>
+    <tr>
+      <td><strong>Solo/Individual?</strong></td>
+      <td style="color: var(--yellow);">Unclear - "teams" emphasized</td>
+      <td style="color: var(--green);">Yes - individuals or teams up to 8</td>
+      <td style="color: var(--green);">Yes - open source, use freely</td>
+    </tr>
+    <tr>
+      <td><strong>Clearance Required?</strong></td>
+      <td style="color: var(--red);">Likely - uses DOW-qualified sims</td>
+      <td style="color: var(--green);">No</td>
+      <td style="color: var(--green);">No</td>
+    </tr>
+    <tr>
+      <td><strong>US Citizenship?</strong></td>
+      <td style="color: var(--yellow);">Not stated - assume likely</td>
+      <td style="color: var(--green);">No - international welcome</td>
+      <td style="color: var(--green);">No</td>
+    </tr>
+    <tr>
+      <td><strong>Language/Platform</strong></td>
+      <td>Unknown - LM proprietary sim</td>
+      <td>Python (onboard compute ~100 TOPS)</td>
+      <td>Python, JSBSim + Gymnasium</td>
+    </tr>
+    <tr>
+      <td><strong>Prize</strong></td>
+      <td>Recognition + LM supplier pipeline</td>
+      <td>$500K pool + job at Anduril</td>
+      <td>Publications, portfolio</td>
+    </tr>
+    <tr>
+      <td><strong>Timeline</strong></td>
+      <td>Q1 2026 (may already be in progress)</td>
+      <td>May-Nov 2026</td>
+      <td>Open-ended</td>
+    </tr>
+    <tr>
+      <td><strong>Entry Cost</strong></td>
+      <td>Free (registration)</td>
+      <td>Free (registration)</td>
+      <td>Free (open source)</td>
+    </tr>
+    <tr>
+      <td><strong>VigilAI Code Reuse</strong></td>
+      <td>Logic only (Lua must port to sim API)</td>
+      <td>Minimal (drone racing != air combat)</td>
+      <td>High (TDE logic portable to Python)</td>
+    </tr>
+    <tr>
+      <td><strong>M2AI Fit</strong></td>
+      <td style="color: var(--yellow);">Medium</td>
+      <td style="color: var(--green);">High</td>
+      <td style="color: var(--green);">High</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- Competition 1: LM AI Fight Club -->
+<h2 class="section-title">1. Lockheed Martin AI Fight Club</h2>
+
+<div class="comp-card">
+  <div class="comp-header">
+    <h3>AI Fight Club&trade;</h3>
+    <span class="comp-badge badge-medium">Medium Fit - Unknowns</span>
+  </div>
+  <div class="comp-body">
+    <div class="comp-meta">
+      <div class="meta-item">
+        <div class="meta-label">Format</div>
+        <div class="meta-value">4v4 AI-piloted 4th gen aircraft, virtual air-to-air combat</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Timeline</div>
+        <div class="meta-value">Q1 2026 (first event imminent or in progress)</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Prize</div>
+        <div class="meta-value">Championship title + recognition + potential LM supplier relationship (LM spends $42B+/yr on suppliers)</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Contact</div>
+        <div class="meta-value" style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">ai.fight.club.lm@lmco.com</div>
+      </div>
+    </div>
+
+    <div class="alert alert-red">
+      <div class="alert-icon">&#9888;</div>
+      <div class="alert-content">
+        <div class="alert-title">Potential Disqualifier: DOW Clearance</div>
+        The sim environment meets "Department of War qualifications." While not explicitly stated, accessing DOW-qualified simulation environments typically requires security clearance or at minimum ITAR/EAR compliance. A solo AI consultancy without existing clearance could be blocked here.
+      </div>
+    </div>
+
+    <div class="alert alert-yellow">
+      <div class="alert-icon">&#9888;</div>
+      <div class="alert-content">
+        <div class="alert-title">Potential Disqualifier: Team Composition</div>
+        LM describes participants as "teams of experts in AI development, military operations, and domain-specific knowledge." The emphasis on military operations expertise suggests they expect defense industry participants, not solo developers. However, John Clark (LM) specifically said the platform targets entities that "have great ideas and great AI but don't have the capital to support the full test environment" -- which is encouraging.
+      </div>
+    </div>
+
+    <div class="alert alert-yellow">
+      <div class="alert-icon">&#9888;</div>
+      <div class="alert-content">
+        <div class="alert-title">Timeline Risk: May Already Be Closed</div>
+        The sim environment was targeted for Q3 2025 completion with first competition Q1 2026. If registration closed in late 2025, the window may have passed. Email immediately to check.
+      </div>
+    </div>
+
+    <div class="pros-cons">
+      <div class="pros">
+        <h4>Pros</h4>
+        <ul>
+          <li>Highest prestige competition in the space</li>
+          <li>Direct pipeline to LM supplier network ($42B+ annually)</li>
+          <li>IP protection guaranteed ("what happens in Fight Club stays in Fight Club")</li>
+          <li>Explicitly welcomes small companies with "great AI but limited capital"</li>
+          <li>VigilAI's combat domain knowledge directly applicable</li>
+          <li>4v4 format matches VigilAI's target evolution</li>
+        </ul>
+      </div>
+      <div class="cons">
+        <h4>Cons</h4>
+        <ul>
+          <li>Clearance likely required (unconfirmed)</li>
+          <li>Proprietary sim environment - no practice outside LM</li>
+          <li>Unknown tech stack (may not be Python)</li>
+          <li>No cash prize - recognition only</li>
+          <li>Registration may be closed already</li>
+          <li>Competing against teams from Raytheon, Boeing, Northrop, etc.</li>
+          <li>VigilAI needs Lua-to-unknown port + RL upgrade</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Competition 2: Anduril AI Grand Prix -->
+<h2 class="section-title">2. Anduril AI Grand Prix</h2>
+
+<div class="comp-card">
+  <div class="comp-header">
+    <h3>AI Grand Prix - Autonomous Drone Racing</h3>
+    <span class="comp-badge badge-high">High Fit - Recommended</span>
+  </div>
+  <div class="comp-body">
+    <div class="comp-meta">
+      <div class="meta-item">
+        <div class="meta-label">Format</div>
+        <div class="meta-value">Autonomous drone racing - time trial through gates, vision-only navigation</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Prize Pool</div>
+        <div class="meta-value">$500,000 total. Top 10 get minimum $5K each. Winner gets job offer at Anduril.</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Team Size</div>
+        <div class="meta-value">Solo or teams up to 8 people</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Registration</div>
+        <div class="meta-value">Free at theaigrandprix.com</div>
+      </div>
+    </div>
+
+    <div class="alert alert-green">
+      <div class="alert-icon">&#10003;</div>
+      <div class="alert-content">
+        <div class="alert-title">No Disqualifiers Found</div>
+        Open to individuals worldwide. No clearance, no citizenship requirement, no professional credentials, no entry fee. International teams welcome (only Russia excluded). All ages (minors need parental consent). This is the most accessible competition in the space.
+      </div>
+    </div>
+
+    <h4 style="margin: 16px 0 8px; font-size: 13px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Competition Phases</h4>
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-date">~March 2026</div>
+        <div class="timeline-text">Simulator package released for download (course map, flight API, dev tools)</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-date">May 2026</div>
+        <div class="timeline-text"><strong>Virtual Qualification Round 1</strong> - Simple course, highlighted gates, clean environment. Time-trial format. Run from home.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-date">June-July 2026</div>
+        <div class="timeline-text"><strong>Virtual Qualification Round 2</strong> - Realistic 3D-scanned environment, visually complex. Top performers advance. Cutoff end of July.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-date">September 2026</div>
+        <div class="timeline-text"><strong>Physical Qualifier</strong> - 2 weeks in-person, Southern California. Indoor environment, consistent lighting. Real drones (Neros Technologies).</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-date">November 2026</div>
+        <div class="timeline-text"><strong>AI Grand Prix Finals</strong> - Columbus, Ohio. Indoor championship. May include spectator disturbances. $500K distributed.</div>
+      </div>
+    </div>
+
+    <h4 style="margin: 16px 0 8px; font-size: 13px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Technical Requirements</h4>
+    <div class="comp-meta">
+      <div class="meta-item">
+        <div class="meta-label">Language</div>
+        <div class="meta-value">Python (C/Cython extensions allowed)</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Compute</div>
+        <div class="meta-value">Onboard ~100 TOPS AI module (provided)</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Sensors</div>
+        <div class="meta-value">Single 12MP FPV camera (wide-angle). No LiDAR. Accelerometer, gyroscope, motor RPM, IMU.</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Navigation</div>
+        <div class="meta-value">Vision-only. No GPS/absolute position data. Starting coords only. Gate detection via camera.</div>
+      </div>
+    </div>
+
+    <div class="pros-cons">
+      <div class="pros">
+        <h4>Pros</h4>
+        <ul>
+          <li>Open to individuals - no team required</li>
+          <li>Free registration, no credentials needed</li>
+          <li>$500K prize pool (top 10 guaranteed $5K each)</li>
+          <li>Python-based - aligns with existing skills</li>
+          <li>Virtual qualification from home - no travel until September</li>
+          <li>Software-only competition - hardware provided</li>
+          <li>Job pipeline to Anduril (defense tech unicorn)</li>
+          <li>Massive portfolio/brand value regardless of placement</li>
+          <li>Global expansion planned (Asia, Middle East, Europe)</li>
+        </ul>
+      </div>
+      <div class="cons">
+        <h4>Cons</h4>
+        <ul>
+          <li>Drone racing != air combat (limited VigilAI code reuse)</li>
+          <li>Vision-based (camera only, no radar) - different domain</li>
+          <li>Need to learn autonomous navigation + computer vision</li>
+          <li>Physical phases require travel (SoCal Sep, Ohio Nov)</li>
+          <li>Competing against university research teams with CV expertise</li>
+          <li>No wind simulation in virtual phase - may not prepare for physical</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Competition 3: BVR Gym -->
+<h2 class="section-title">3. BVR Gym / Academic Track</h2>
+
+<div class="comp-card">
+  <div class="comp-header">
+    <h3>BVR Gym - Open Source RL Training Ground</h3>
+    <span class="comp-badge badge-info">Portfolio Builder</span>
+  </div>
+  <div class="comp-body">
+    <div class="comp-meta">
+      <div class="meta-item">
+        <div class="meta-label">What It Is</div>
+        <div class="meta-value">Open-source RL environment for beyond-visual-range air combat on JSBSim</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Stack</div>
+        <div class="meta-value">Python, JSBSim F-16 flight dynamics, OpenAI Gymnasium interface</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">GitHub</div>
+        <div class="meta-value" style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">github.com/xcwoid/BVRGym</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Prize</div>
+        <div class="meta-value">No cash. Academic publications, portfolio pieces, open-source credibility.</div>
+      </div>
+    </div>
+
+    <div class="alert alert-green">
+      <div class="alert-icon">&#10003;</div>
+      <div class="alert-content">
+        <div class="alert-title">No Barriers to Entry</div>
+        Fully open source. Clone and start training. No registration, no clearance, no restrictions. Related env B-ACE also available (PettingZoo multi-agent compatible).
+      </div>
+    </div>
+
+    <div class="pros-cons">
+      <div class="pros">
+        <h4>Pros</h4>
+        <ul>
+          <li>Start TODAY - no waiting for registration</li>
+          <li>Direct VigilAI code reuse (TDE logic ports to Python)</li>
+          <li>Builds RL skills needed for both competitions above</li>
+          <li>F-16 flight dynamics - same domain as VigilAI</li>
+          <li>Gymnasium interface - standard RL API (PPO, SAC, etc.)</li>
+          <li>Publishable results (paper + GitHub) builds defense AI credibility</li>
+          <li>Training ground for AI Fight Club if that opens up</li>
+        </ul>
+      </div>
+      <div class="cons">
+        <h4>Cons</h4>
+        <ul>
+          <li>No prize money</li>
+          <li>No competitive pressure / external deadlines</li>
+          <li>Academic, not flashy - less brand impact than competitions</li>
+          <li>1v1 only (B-ACE adds multi-agent but newer/less tested)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DARPA ACE (Historical) -->
+<h2 class="section-title">4. DARPA ACE / AlphaDogfight (Historical Reference)</h2>
+
+<div class="comp-card">
+  <div class="comp-header">
+    <h3>DARPA Air Combat Evolution</h3>
+    <span class="comp-badge badge-low">Closed - Reference Only</span>
+  </div>
+  <div class="comp-body">
+    <div class="alert alert-red">
+      <div class="alert-icon">&#10007;</div>
+      <div class="alert-content">
+        <div class="alert-title">Not Open for Entry</div>
+        The AlphaDogfight Trials concluded in 2020. Live flight testing (X-62A vs manned F-16) happened in 2022. Selected contractors only (EpiSci, PhysicsAI, Shield AI, JHU APL). No public competition path. Included here for context only -- this is what the field looks like at the top end.
+      </div>
+    </div>
+    <p style="font-size: 13px; color: var(--text-secondary);">
+      The winning AI defeated an experienced F-16 pilot 5-0 in simulated dogfights (August 2020). The program then transitioned to real aircraft, with AI algorithms controlling the X-62A VISTA at Edwards AFB. This is the gold standard for autonomous air combat, but access is strictly through DARPA contracts.
+    </p>
+  </div>
+</div>
+
+<!-- Recommended Strategy -->
+<div class="actions">
+  <h3>Recommended Dual-Track Action Plan</h3>
+
+  <div class="action-item">
+    <div class="action-num">1</div>
+    <div>
+      <strong>TODAY: Email ai.fight.club.lm@lmco.com</strong><br>
+      <span style="color: var(--text-secondary); font-size: 13px;">Ask: (a) Is registration still open? (b) Can individual/small company participate without existing clearance? (c) What are the technical requirements? This email determines whether AI Fight Club is viable at all.</span>
+    </div>
+  </div>
+
+  <div class="action-item">
+    <div class="action-num">2</div>
+    <div>
+      <strong>THIS WEEK: Ship VigilAI v1.0 on Gumroad ($19.99)</strong><br>
+      <span style="color: var(--text-secondary); font-size: 13px;">Fix the formation mutation bug (formation_controller.lua:177-180). Add basic TDE tests. List it. Generates revenue independently of competition outcomes. 1-2 days of work.</span>
+    </div>
+  </div>
+
+  <div class="action-item">
+    <div class="action-num">3</div>
+    <div>
+      <strong>THIS WEEK: Clone BVR Gym, set up training environment</strong><br>
+      <span style="color: var(--text-secondary); font-size: 13px;">git clone github.com/xcwoid/BVRGym. Port VigilAI's TDE threat prioritization to Python. Train baseline PPO agent. This builds the RL muscle needed for both competitions.</span>
+    </div>
+  </div>
+
+  <div class="action-item">
+    <div class="action-num">4</div>
+    <div>
+      <strong>MARCH: Register for AI Grand Prix when simulator drops</strong><br>
+      <span style="color: var(--text-secondary); font-size: 13px;">Free registration at theaigrandprix.com. Download simulator package. Pivot from BVR training to drone racing once the sim is available. Virtual qualification runs May-July from home.</span>
+    </div>
+  </div>
+
+  <div class="action-item">
+    <div class="action-num">5</div>
+    <div>
+      <strong>MAY-JULY: Virtual qualification (primary competition effort)</strong><br>
+      <span style="color: var(--text-secondary); font-size: 13px;">Round 1 is simple gates in clean environment. Round 2 adds visual complexity. Focus: vision-based gate detection + autonomous navigation. Python + computer vision (OpenCV/YOLO for gate detection).</span>
+    </div>
+  </div>
+</div>
+
+<!-- Sources -->
+<div class="sources">
+  <h4>Sources</h4>
+  <a href="https://www.lockheedmartin.com/en-us/capabilities/artificial-intelligence-machine-learning/ai-fight-club.html" target="_blank">Lockheed Martin AI Fight Club - Official Page</a>
+  <a href="https://news.lockheedmartin.com/2025-06-03-Lockheed-Martins-AI-Fight-Club-TM-Puts-AI-to-the-Test-for-National-Security" target="_blank">LM Press Release: AI Fight Club Puts AI to the Test (Jun 3, 2025)</a>
+  <a href="https://spacenews.com/lockheed-martin-launches-ai-fight-club-to-test-algorithms-for-warfare/" target="_blank">SpaceNews: Lockheed Martin Launches AI Fight Club</a>
+  <a href="https://techstrong.ai/features/inside-lockheed-martins-ai-fight-club-where-the-future-of-warfare-is-tested/" target="_blank">Techstrong.ai: Inside LM's AI Fight Club</a>
+  <a href="https://theaigrandprix.com/" target="_blank">Anduril AI Grand Prix - Official Site</a>
+  <a href="https://techcrunch.com/2026/01/27/anduril-has-invented-a-wild-new-drone-flying-contest-where-jobs-are-the-prize/" target="_blank">TechCrunch: Anduril's Drone Contest (Jan 27, 2026)</a>
+  <a href="https://dronelife.com/2026/01/28/anduril-launches-500k-drone-racing-ai-grand-prix/" target="_blank">DRONELIFE: Anduril Launches $500K AI Grand Prix</a>
+  <a href="https://www.anduril.com/news/anduril-launches-the-ai-grand-prix-a-global-autonomous-drone-race" target="_blank">Anduril Official Announcement</a>
+  <a href="https://dronechampionsleague.com/theaigrandprix2026-announcement/" target="_blank">DCL: AI Grand Prix Goes Global</a>
+  <a href="https://arxiv.org/abs/2403.17533" target="_blank">BVR Gym: RL Environment for BVR Air Combat (arXiv)</a>
+  <a href="https://github.com/xcwoid/BVRGym" target="_blank">BVR Gym GitHub Repository</a>
+  <a href="https://www.darpa.mil/research/programs/air-combat-evolution" target="_blank">DARPA ACE Program</a>
+</div>
+
+</body>
+</html>
