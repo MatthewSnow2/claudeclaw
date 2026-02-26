@@ -26,7 +26,8 @@ Replace blocking single-session model with async worker dispatch.
 
 - [ ] Add task duration estimation to Data
 - [ ] Implement async dispatch in bot.ts / agent.ts
-- [ ] Starscream worker process (pm2) - social media, Late API
+- [x] Starscream M-F 1000 posting (scheduled task, Late API, HF image gen, Imgur hosting, HIL review)
+- [ ] Starscream full worker process (pm2) - async dispatch integration
 - [ ] Ravage worker process (pm2) - coding + GitHub review
 - [ ] Soundwave worker process (pm2) - research + HIL coaching
 - [ ] All agents integrated into Sky-Lynx improvement loop
