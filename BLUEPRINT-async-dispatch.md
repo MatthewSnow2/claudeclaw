@@ -138,10 +138,10 @@ Add to Data's capabilities:
 ## Implementation Order
 
 1. [x] Architecture doc (this file)
-2. [ ] dispatch_queue table in db.ts
-3. [ ] classifier.ts -- message classification logic
-4. [ ] result-poller.ts -- poll completed tasks, send to Telegram
-5. [ ] bot.ts changes -- dispatch long tasks instead of blocking
+2. [x] dispatch_queue table in db.ts
+3. [x] classifier.ts -- message classification logic
+4. [x] result-poller.ts -- poll completed tasks, send to Telegram
+5. [x] bot.ts changes -- dispatch long tasks instead of blocking
 6. [ ] worker.ts -- generic worker loop
 7. [ ] Starscream CLAUDE.md + config
 8. [ ] Ravage CLAUDE.md + config

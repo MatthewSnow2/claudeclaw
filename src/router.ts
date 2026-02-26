@@ -56,6 +56,15 @@ function parsePrefix(raw: string): ParsedMessage {
 }
 
 /**
+ * Check if a message would be routed to the Claude backend.
+ * Used by the dispatcher to decide whether to classify for async dispatch
+ * (only Claude messages are candidates for dispatch).
+ */
+export function isClaude(originalMessage: string): boolean {
+  return parsePrefix(originalMessage).backend === 'claude';
+}
+
+/**
  * Route an incoming message to the appropriate backend.
  * Returns null if the message should be ignored (e.g. @mention for another bot).
  *

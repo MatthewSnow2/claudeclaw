@@ -9,6 +9,7 @@ import { initDatabase } from './db.js';
 import { logger } from './logger.js';
 import { cleanupOldUploads } from './media.js';
 import { runDecaySweep } from './memory.js';
+import { startResultPoller, stopResultPoller } from './result-poller.js';
 import { initScheduler } from './scheduler.js';
 import { initTelemetry } from './telemetry.js';
 
@@ -100,9 +101,13 @@ async function main(): Promise<void> {
       });
     }
 
+    // Result poller: checks dispatch_queue for completed/failed tasks every 10s
+    startResultPoller(bot.api);
+
     // Graceful shutdown
     const shutdown = async () => {
       logger.info('Shutting down...');
+      stopResultPoller();
       releaseLock();
       await bot.stop();
       process.exit(0);

@@ -7,11 +7,12 @@ import {
   TELEGRAM_BOT_TOKEN,
   TYPING_REFRESH_MS,
 } from './config.js';
-import { clearSession, getRecentMemories, getSession, setSession } from './db.js';
+import { classifyMessage } from './classifier.js';
+import { clearSession, enqueueTask, getRecentMemories, getSession, setSession } from './db.js';
 import { logger } from './logger.js';
 import { downloadMedia, buildPhotoMessage, buildDocumentMessage, buildVideoMessage } from './media.js';
 import { buildMemoryContext, saveConversationTurn } from './memory.js';
-import { routeMessage } from './router.js';
+import { routeMessage, isClaude } from './router.js';
 import * as telemetry from './telemetry.js';
 import {
   downloadTelegramFile,
@@ -228,6 +229,33 @@ async function handleMessage(ctx: Context, message: string): Promise<void> {
     message_type: 'text',
     message_length: message.length,
   });
+
+  // Async dispatch: classify Claude-bound messages and dispatch long tasks
+  // to the worker queue instead of blocking the bot.
+  if (isClaude(message)) {
+    const classification = classifyMessage(message);
+    if (classification.isLong) {
+      const taskId = enqueueTask(chatIdStr, message, classification.workerType);
+      const workerLabel = classification.workerType === 'default'
+        ? 'a worker'
+        : classification.workerType.charAt(0).toUpperCase() + classification.workerType.slice(1);
+
+      logger.info(
+        { taskId, workerType: classification.workerType, chatId },
+        'Dispatched long task to queue',
+      );
+      telemetry.emit({
+        timestamp: new Date().toISOString(),
+        event_type: 'task_dispatched',
+        chat_id: chatIdStr,
+        task_id: taskId,
+        worker_type: classification.workerType,
+      });
+
+      await ctx.reply(`Got it. Dispatched to ${workerLabel}. I'll ping you when it's done.`);
+      return;
+    }
+  }
 
   // Route based on the ORIGINAL message (before memory context),
   // so @prefix detection works regardless of memory state.
