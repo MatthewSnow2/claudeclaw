@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic SCM - The End of Forecasting</title>
+    <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=clash-display@400;500;600;700&f[]=satoshi@400;500;700&display=swap">
+    <style>
+        /* ===========================================
+           THEME: Bold Signal / Dark Professional
+           Agentic SCM Proposal for Skool AI Community
+           =========================================== */
+        :root {
+            --bg-primary: #0b0f1a;
+            --bg-secondary: #131a2b;
+            --bg-card: rgba(19, 26, 43, 0.8);
+            --bg-card-hover: rgba(25, 35, 55, 0.9);
+            --text-primary: #e8edf5;
+            --text-secondary: #8b97b0;
+            --accent: #f97316;
+            --accent-glow: rgba(249, 115, 22, 0.25);
+            --accent-2: #3b82f6;
+            --accent-2-glow: rgba(59, 130, 246, 0.2);
+            --accent-3: #10b981;
+            --accent-3-glow: rgba(16, 185, 129, 0.2);
+            --accent-4: #a855f7;
+            --danger: #ef4444;
+            --warning: #eab308;
+
+            --font-display: 'Clash Display', sans-serif;
+            --font-body: 'Satoshi', sans-serif;
+
+            --title-size: clamp(2rem, 6vw, 4.5rem);
+            --h2-size: clamp(1.4rem, 3.5vw, 2.5rem);
+            --h3-size: clamp(1rem, 2.2vw, 1.4rem);
+            --body-size: clamp(0.75rem, 1.4vw, 1.05rem);
+            --small-size: clamp(0.65rem, 1vw, 0.85rem);
+            --stat-size: clamp(2rem, 5vw, 4rem);
+
+            --slide-padding: clamp(1.5rem, 4vw, 4rem);
+            --content-gap: clamp(0.75rem, 2vw, 1.75rem);
+            --element-gap: clamp(0.4rem, 1vw, 0.75rem);
+
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+            --duration-normal: 0.6s;
+            --duration-slow: 0.9s;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html {
+            scroll-behavior: smooth;
+            scroll-snap-type: y mandatory;
+            height: 100%;
+            overflow-x: hidden;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            height: 100%;
+        }
+
+        /* ===========================================
+           SLIDE CONTAINER
+           Each slide = exact viewport height
+           =========================================== */
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            padding: var(--slide-padding);
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slide-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            max-height: 100%;
+            overflow: hidden;
+        }
+
+        /* ===========================================
+           BACKGROUNDS
+           =========================================== */
+        .bg-grid {
+            background-image:
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        .bg-gradient-warm {
+            background:
+                radial-gradient(ellipse at 20% 80%, rgba(249, 115, 22, 0.12) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+                var(--bg-primary);
+        }
+
+        .bg-gradient-cool {
+            background:
+                radial-gradient(ellipse at 70% 70%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at 30% 30%, rgba(168, 85, 247, 0.08) 0%, transparent 50%),
+                var(--bg-primary);
+        }
+
+        .bg-gradient-green {
+            background:
+                radial-gradient(ellipse at 50% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(249, 115, 22, 0.06) 0%, transparent 50%),
+                var(--bg-primary);
+        }
+
+        /* ===========================================
+           TYPOGRAPHY
+           =========================================== */
+        h1 {
+            font-family: var(--font-display);
+            font-size: var(--title-size);
+            font-weight: 700;
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+        }
+
+        h2 {
+            font-family: var(--font-display);
+            font-size: var(--h2-size);
+            font-weight: 600;
+            line-height: 1.2;
+            letter-spacing: -0.01em;
+        }
+
+        h3 {
+            font-family: var(--font-display);
+            font-size: var(--h3-size);
+            font-weight: 500;
+            line-height: 1.3;
+        }
+
+        p, li {
+            font-size: var(--body-size);
+            line-height: 1.5;
+            color: var(--text-secondary);
+        }
+
+        .accent-text { color: var(--accent); }
+        .blue-text { color: var(--accent-2); }
+        .green-text { color: var(--accent-3); }
+        .purple-text { color: var(--accent-4); }
+        .dim-text { color: var(--text-secondary); opacity: 0.7; }
+
+        .slide-label {
+            font-family: var(--font-body);
+            font-size: var(--small-size);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--accent);
+            margin-bottom: var(--element-gap);
+        }
+
+        /* ===========================================
+           CARDS & CONTAINERS
+           =========================================== */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: clamp(0.75rem, 2vw, 1.5rem);
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s var(--ease-out-expo), border-color 0.3s;
+        }
+
+        .card:hover {
+            border-color: rgba(249, 115, 22, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--content-gap);
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--content-gap);
+        }
+
+        .grid-2x2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: var(--element-gap);
+        }
+
+        .stat-block {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-family: var(--font-display);
+            font-size: var(--stat-size);
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: var(--small-size);
+            color: var(--text-secondary);
+            margin-top: 0.25em;
+        }
+
+        /* ===========================================
+           FLOW DIAGRAMS (CSS-based)
+           =========================================== */
+        .flow-row {
+            display: flex;
+            align-items: center;
+            gap: clamp(0.5rem, 1.5vw, 1.25rem);
+            flex-wrap: nowrap;
+        }
+
+        .flow-box {
+            background: var(--bg-card);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            padding: clamp(0.4rem, 1vw, 0.75rem) clamp(0.6rem, 1.5vw, 1rem);
+            font-size: var(--small-size);
+            font-weight: 500;
+            white-space: nowrap;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .flow-box.highlight {
+            border-color: var(--accent);
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        .flow-box.blue { border-color: var(--accent-2); box-shadow: 0 0 15px var(--accent-2-glow); }
+        .flow-box.green { border-color: var(--accent-3); box-shadow: 0 0 15px var(--accent-3-glow); }
+
+        .flow-arrow {
+            color: var(--text-secondary);
+            font-size: clamp(0.8rem, 1.5vw, 1.2rem);
+            flex-shrink: 0;
+            opacity: 0.5;
+        }
+
+        /* ===========================================
+           COMPARISON TABLE
+           =========================================== */
+        .compare-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .compare-table th {
+            font-family: var(--font-display);
+            font-size: var(--small-size);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: clamp(0.4rem, 1vh, 0.75rem) clamp(0.5rem, 1vw, 1rem);
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-secondary);
+        }
+
+        .compare-table td {
+            font-size: var(--body-size);
+            padding: clamp(0.4rem, 1vh, 0.75rem) clamp(0.5rem, 1vw, 1rem);
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            vertical-align: top;
+        }
+
+        .compare-table .label-col {
+            font-weight: 500;
+            color: var(--text-primary);
+            white-space: nowrap;
+        }
+
+        .compare-table .old-col { color: var(--text-secondary); opacity: 0.7; }
+        .compare-table .new-col { color: var(--accent-3); }
+
+        /* ===========================================
+           ICON BADGES
+           =========================================== */
+        .icon-badge {
+            width: clamp(2rem, 4vw, 3rem);
+            height: clamp(2rem, 4vw, 3rem);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(1rem, 2vw, 1.5rem);
+            margin-bottom: var(--element-gap);
+            flex-shrink: 0;
+        }
+
+        .icon-badge.orange { background: rgba(249, 115, 22, 0.15); }
+        .icon-badge.blue { background: rgba(59, 130, 246, 0.15); }
+        .icon-badge.green { background: rgba(16, 185, 129, 0.15); }
+        .icon-badge.purple { background: rgba(168, 85, 247, 0.15); }
+        .icon-badge.red { background: rgba(239, 68, 68, 0.15); }
+
+        /* ===========================================
+           ANIMATIONS
+           =========================================== */
+        .reveal {
+            opacity: 0;
+            transform: translateY(25px);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .reveal-left {
+            opacity: 0;
+            transform: translateX(-30px);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .reveal-right {
+            opacity: 0;
+            transform: translateX(30px);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .reveal-scale {
+            opacity: 0;
+            transform: scale(0.92);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .slide.visible .reveal,
+        .slide.visible .reveal-left,
+        .slide.visible .reveal-right,
+        .slide.visible .reveal-scale {
+            opacity: 1;
+            transform: translateY(0) translateX(0) scale(1);
+        }
+
+        .slide.visible .reveal:nth-child(1),
+        .slide.visible .reveal-left:nth-child(1),
+        .slide.visible .reveal-scale:nth-child(1) { transition-delay: 0.05s; }
+        .slide.visible .reveal:nth-child(2),
+        .slide.visible .reveal-left:nth-child(2),
+        .slide.visible .reveal-scale:nth-child(2) { transition-delay: 0.12s; }
+        .slide.visible .reveal:nth-child(3),
+        .slide.visible .reveal-left:nth-child(3),
+        .slide.visible .reveal-scale:nth-child(3) { transition-delay: 0.19s; }
+        .slide.visible .reveal:nth-child(4),
+        .slide.visible .reveal-left:nth-child(4),
+        .slide.visible .reveal-scale:nth-child(4) { transition-delay: 0.26s; }
+        .slide.visible .reveal:nth-child(5),
+        .slide.visible .reveal-scale:nth-child(5) { transition-delay: 0.33s; }
+        .slide.visible .reveal:nth-child(6),
+        .slide.visible .reveal-scale:nth-child(6) { transition-delay: 0.40s; }
+
+        /* Pulse animation for emphasis */
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 15px var(--accent-glow); }
+            50% { box-shadow: 0 0 30px var(--accent-glow), 0 0 50px rgba(249, 115, 22, 0.1); }
+        }
+
+        .pulse { animation: pulse-glow 3s ease-in-out infinite; }
+
+        /* Counter animation */
+        @keyframes count-up {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ===========================================
+           PROGRESS BAR
+           =========================================== */
+        .progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent), var(--accent-2));
+            z-index: 100;
+            transition: width 0.3s var(--ease-out-expo);
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        /* ===========================================
+           NAV DOTS
+           =========================================== */
+        .nav-dots {
+            position: fixed;
+            right: clamp(0.75rem, 2vw, 1.5rem);
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 50;
+        }
+
+        .nav-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.15);
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out-expo);
+            border: none;
+            padding: 0;
+        }
+
+        .nav-dot.active {
+            background: var(--accent);
+            box-shadow: 0 0 8px var(--accent-glow);
+            transform: scale(1.3);
+        }
+
+        .nav-dot:hover:not(.active) {
+            background: rgba(255,255,255,0.3);
+        }
+
+        /* ===========================================
+           SLIDE-SPECIFIC: TITLE
+           =========================================== */
+        .title-slide {
+            text-align: center;
+        }
+
+        .title-slide h1 {
+            margin-bottom: var(--element-gap);
+        }
+
+        .title-tagline {
+            font-size: clamp(1rem, 2.5vw, 1.5rem);
+            color: var(--accent);
+            font-family: var(--font-display);
+            font-weight: 500;
+            margin-bottom: var(--content-gap);
+        }
+
+        .title-meta {
+            font-size: var(--small-size);
+            color: var(--text-secondary);
+            opacity: 0.6;
+        }
+
+        /* ===========================================
+           SLIDE-SPECIFIC: QUOTE
+           =========================================== */
+        .quote-block {
+            font-family: var(--font-display);
+            font-size: clamp(1.2rem, 3vw, 2rem);
+            font-weight: 500;
+            line-height: 1.3;
+            color: var(--text-primary);
+            border-left: 3px solid var(--accent);
+            padding-left: clamp(1rem, 2vw, 2rem);
+            max-width: 800px;
+        }
+
+        .quote-attribution {
+            font-size: var(--small-size);
+            color: var(--text-secondary);
+            margin-top: var(--element-gap);
+            font-family: var(--font-body);
+            font-weight: 400;
+        }
+
+        /* ===========================================
+           SLIDE-SPECIFIC: BEACHHEAD
+           =========================================== */
+        .segment-card {
+            position: relative;
+        }
+
+        .segment-card .segment-tag {
+            font-size: var(--small-size);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5em;
+        }
+
+        .segment-card h3 {
+            margin-bottom: 0.3em;
+        }
+
+        .segment-card p {
+            font-size: var(--small-size);
+        }
+
+        /* ===========================================
+           SLIDE-SPECIFIC: DEMO
+           =========================================== */
+        .demo-container {
+            background: var(--bg-card);
+            border: 1px solid rgba(249, 115, 22, 0.2);
+            border-radius: 12px;
+            padding: clamp(1rem, 2vw, 2rem);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .demo-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: var(--content-gap);
+        }
+
+        .demo-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .terminal-line {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: var(--small-size);
+            line-height: 1.8;
+            color: var(--text-secondary);
+        }
+
+        .terminal-line .prompt { color: var(--accent-3); }
+        .terminal-line .cmd { color: var(--text-primary); }
+        .terminal-line .output { color: var(--accent); }
+        .terminal-line .info { color: var(--accent-2); }
+
+        /* ===========================================
+           RESPONSIVE BREAKPOINTS
+           =========================================== */
+        @media (max-width: 768px) {
+            .grid-2, .grid-3 { grid-template-columns: 1fr; }
+            .grid-2x2 { grid-template-columns: 1fr 1fr; }
+            .flow-row { flex-wrap: wrap; justify-content: center; }
+        }
+
+        @media (max-height: 700px) {
+            :root {
+                --slide-padding: clamp(1rem, 3vw, 2.5rem);
+                --content-gap: clamp(0.5rem, 1.5vw, 1rem);
+                --title-size: clamp(1.5rem, 5vw, 3rem);
+                --h2-size: clamp(1.2rem, 3vw, 2rem);
+            }
+        }
+
+        @media (max-height: 600px) {
+            :root {
+                --slide-padding: clamp(0.75rem, 2.5vw, 1.5rem);
+                --content-gap: clamp(0.4rem, 1vw, 0.75rem);
+                --title-size: clamp(1.25rem, 4.5vw, 2.5rem);
+                --body-size: clamp(0.7rem, 1.2vw, 0.9rem);
+            }
+            .nav-dots { display: none; }
+        }
+
+        @media (max-height: 500px) {
+            :root {
+                --slide-padding: clamp(0.5rem, 2vw, 1rem);
+                --title-size: clamp(1rem, 4vw, 2rem);
+                --h2-size: clamp(0.9rem, 2.5vw, 1.5rem);
+                --body-size: clamp(0.65rem, 1vw, 0.85rem);
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.2s !important;
+            }
+            html { scroll-behavior: auto; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Progress Bar -->
+    <div class="progress-bar" id="progressBar"></div>
+
+    <!-- Navigation Dots -->
+    <nav class="nav-dots" id="navDots"></nav>
+
+    <!-- ============================================
+         SLIDE 1: TITLE
+         ============================================ -->
+    <section class="slide title-slide bg-gradient-warm bg-grid" id="slide-1">
+        <div class="slide-content">
+            <p class="title-tagline reveal">What if your supply chain managed itself?</p>
+            <h1 class="reveal">Agentic <span class="accent-text">SCM</span></h1>
+            <p class="reveal" style="font-size: var(--h3-size); color: var(--text-secondary); margin-top: var(--element-gap);">
+                The End of Forecasting
+            </p>
+            <p class="title-meta reveal" style="margin-top: var(--content-gap);">
+                Matthew Snow / M2AI &nbsp;&bull;&nbsp; 2026
+            </p>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SLIDE 2: THE PROBLEM
+         ============================================ -->
+    <section class="slide bg-gradient-cool bg-grid" id="slide-2">
+        <div class="slide-content">
+            <p class="slide-label reveal">The Problem</p>
+            <h2 class="reveal">Supply chains still run on <span class="accent-text">guesswork</span></h2>
+            <div style="margin-top: var(--content-gap); display: flex; flex-direction: column; gap: var(--element-gap);">
+                <div class="card reveal" style="display: flex; align-items: flex-start; gap: 1rem;">
+                    <div class="icon-badge orange">&#x1F4CA;</div>
+                    <div>
+                        <h3>Batch Forecasting</h3>
+                        <p>Weekly/monthly demand planning based on historical data. By the time you act, the signal is stale.</p>
+                    </div>
+                </div>
+                <div class="card reveal" style="display: flex; align-items: flex-start; gap: 1rem;">
+                    <div class="icon-badge blue">&#x1F504;</div>
+                    <div>
+                        <h3>ETL Lag</h3>
+                        <p>Data moves through extract-transform-load pipelines with hours or days of latency. Real-time visibility is a myth.</p>
+                    </div>
+                </div>
+                <div class="card reveal" style="display: flex; align-items: flex-start; gap: 1rem;">
+                    <div class="icon-badge red">&#x1F6A8;</div>
+                    <div>
+                        <h3>Human Bottleneck</h3>
+                        <p>Purchase orders, rebalancing, routing decisions all require human approval. The chain moves at the speed of email.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SLIDE 3: TRADITIONAL vs AGENTIC
+         ============================================ -->
+    <section class="slide bg-grid" id="slide-3">
+        <div class="slide-content">
+            <p class="slide-label reveal">Old vs. New</p>
+            <h2 class="reveal">From <span class="dim-text">ETL Pipelines</span> to <span class="green-text">Autonomous Agents</span></h2>
+            <div style="margin-top: var(--content-gap);">
+                <table class="compare-table reveal">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Traditional SCM</th>
+                            <th>Agentic SCM</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="label-col">&#x23F1; Latency</td>
+                            <td class="old-col">Hours to days (batch ETL)</td>
+                            <td class="new-col">Real-time (event-driven)</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">&#x1F4C8; Forecasting</td>
+                            <td class="old-col">Historical averages, seasonal models</td>
+                            <td class="new-col">Live consumption rates + anomaly detection</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">&#x1F6D2; Purchasing</td>
+                            <td class="old-col">Manual PO creation, email approval</td>
+                            <td class="new-col">Auto-generated POs within constraints</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">&#x1F504; Rebalancing</td>
+                            <td class="old-col">Monthly review, spreadsheet analysis</td>
+                            <td class="new-col">Continuous optimization, auto-routing</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">&#x1F9D1; Human Role</td>
+                            <td class="old-col">Operator (clicks buttons, approves)</td>
+                            <td class="new-col">Strategist (sets constraints, monitors)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SLIDE 4: HOW IT WORKS
+         ============================================ -->
+    <section class="slide bg-gradient-warm bg-grid" id="slide-4">
+        <div class="slide-content">
+            <p class="slide-label reveal">Architecture</p>
+            <h2 class="reveal">How <span class="accent-text">Agentic SCM</span> Works</h2>
+            <div style="margin-top: var(--content-gap); display: flex; flex-direction: column; gap: var(--content-gap);">
+                <!-- Flow diagram -->
+                <div class="flow-row reveal">
+                    <div class="flow-box">&#x1F4E1; Signals</div>
+                    <div class="flow-arrow">&rarr;</div>
+                    <div class="flow-box blue">&#x1F9E0; Agent Layer</div>
+                    <div class="flow-arrow">&rarr;</div>
+                    <div class="flow-box highlight">&#x26A1; Actions</div>
+                    <div class="flow-arrow">&rarr;</div>
+                    <div class="flow-box green">&#x1F4CA; Outcomes</div>
+                    <div class="flow-arrow">&rarr;</div>
+                    <div class="flow-box">&#x1F504; Learn</div>
+                </div>
+                <!-- Explanation cards -->
+                <div class="grid-2">
+                    <div class="card reveal">
+                        <h3>&#x1F4E1; Signal Ingestion</h3>
+                        <p>POS data, inventory sensors, supplier feeds, weather, logistics tracking. All streaming, not batched.</p>
+                    </div>
+                    <div class="card reveal">
+                        <h3>&#x1F9E0; Agent Reasoning</h3>
+                        <p>LLM agents analyze patterns, detect anomalies, predict shortfalls. Multiple models for diverse perspectives.</p>
+                    </div>
+                    <div class="card reveal">
+                        <h3>&#x26A1; Autonomous Action</h3>
+                        <p>Generate POs, reroute shipments, rebalance inventory. All within human-set guardrails and spend limits.</p>
+                    </div>
+                    <div class="card reveal">
+                        <h3>&#x1F504; Feedback Loop</h3>
+                        <p>Outcomes feed back to improve agent decisions. The system gets smarter every cycle without retraining.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SLIDE 5: THE WALMART LESSON
+         ============================================ -->
+    <section class="slide bg-gradient-cool" id="slide-5">
+        <div class="slide-content" style="max-width: 900px; margin: 0 auto;">
+            <p class="slide-label reveal">Why This Matters</p>
+            <div class="quote-block reveal">
+                "Walmart didn't win because they had better products. They won because their supply chain was a weapon. Automated replenishment. Cross-docking. Real-time inventory. Everyone else was still faxing purchase orders."
+            </div>
+            <p class="reveal" style="margin-top: var(--content-gap); font-size: var(--body-size); max-width: 700px;">
+                The next Walmart-level advantage won't come from better ERP software. It'll come from <span class="accent-text">agents that manage the chain autonomously</span>, 24/7, reacting to signals faster than any human team.
+            </p>
+            <div class="grid-3 reveal" style="margin-top: var(--content-gap);">
+                <div class="stat-block">
+                    <div class="stat-number accent-text">24/7</div>
+                    <div class="stat-label">Continuous Operation</div>
+                </div>
+                <div class="stat-block">
+                    <div class="stat-number blue-text">&lt;1s</div>
+                    <div class="stat-label">Signal to Decision</div>
+                </div>
+                <div class="stat-block">
+                    <div class="stat-number green-text">0</div>
+                    <div class="stat-label">Manual Approvals</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SLIDE 6: MARKET SEGMENTS
+         ============================================ -->
+    <section class="slide bg-grid" id="slide-6">
+        <div class="slide-content">
+            <p class="slide-label reveal">Beachhead Markets</p>
+            <h2 class="reveal">Who Needs This <span class="accent-text">First</span>?</h2>
+            <div class="grid-3" style="margin-top: var(--content-gap);">
+                <div class="card segment-card reveal">
+                    <p class="segment-tag accent-text">&#x1F3AF; Primary</p>
+                    <h3>Mid-Tier Enterprise</h3>
+                    <p>$50M-$500M revenue. Complex enough to need automation. Too small for SAP/Oracle consulting armies. Underserved by current tools.</p>
+                </div>
+                <div class="card segment-card reveal">
+                    <p class="segment-tag blue-text">&#x1F680; Growth</p>
+                    <h3>SMB Distribution</h3>
+                    <p>Regional distributors, wholesalers, 3PLs. Manual processes, spreadsheet-driven. Huge efficiency gains with low switching cost.</p>
+                </div>
+                <div class="card segment-card reveal">
+                    <p class="segment-tag green-text">&#x1F527; Services</p>
+                    <h3>Owner/Operator</h3>
+                    <p>Single-owner businesses running their own supply chain. Currently doing everything by hand or gut feel. Agent = instant COO.</p>
+                </div>
+            </div>
+            <p class="reveal dim-text" style="margin-top: var(--content-gap); text-align: center; font-size: var(--small-size);">
+                Christensen approach: Win in underserved markets, then move upmarket.
+            </p>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SLIDE 7: VALUE PROPOSITION
+         ============================================ -->
+    <section class="slide bg-gradient-green bg-grid" id="slide-7">
+        <div class="slide-content">
+            <p class="slide-label reveal">Value Proposition</p>
+            <h2 class="reveal">What the Customer <span class="green-text">Gets</span></h2>
+            <div style="margin-top: var(--content-gap); display: flex; flex-direction: column; gap: var(--element-gap);">
+                <div class="card reveal" style="display: flex; align-items: center; gap: 1rem; border-left: 3px solid var(--accent);">
+                    <div style="flex: 1;">
+                        <h3>&#x26A1; Faster Distribution</h3>
+                        <p>Agent monitors warehouse levels, triggers replenishment before stockout. No human in the loop for routine orders.</p>
+                    </div>
+                </div>
+                <div class="card reveal" style="display: flex; align-items: center; gap: 1rem; border-left: 3px solid var(--accent-2);">
+                    <div style="flex: 1;">
+                        <h3>&#x1F504; Real-Time Replenishment</h3>
+                        <p>Consumption-rate based ordering replaces periodic forecasts. Adaptive, not predictive. Reacts to what's actually happening.</p>
+                    </div>
+                </div>
+                <div class="card reveal" style="display: flex; align-items: center; gap: 1rem; border-left: 3px solid var(--accent-3);">
+                    <div style="flex: 1;">
+                        <h3>&#x1F4B0; Automated Purchase Cycles</h3>
+                        <p>POs generated, approved (within guardrails), and sent. Spend limits, vendor preferences, and lead times all agent-managed.</p>
+                    </div>
+                </div>
+                <div class="card reveal" style="display: flex; align-items: center; gap: 1rem; border-left: 3px solid var(--accent-4);">
+                    <div style="flex: 1;">
+                        <h3>&#x1F9E0; Self-Improving Accuracy</h3>
+                        <p>Every order outcome feeds back. Wrong quantity? Agent adjusts. Supplier late? Agent routes to backup. No manual tuning.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SLIDE 8: AGENT ARCHITECTURE
+         ============================================ -->
+    <section class="slide bg-gradient-cool bg-grid" id="slide-8">
+        <div class="slide-content">
+            <p class="slide-label reveal">Under the Hood</p>
+            <h2 class="reveal">Multi-Agent <span class="blue-text">Coordination</span></h2>
+            <p class="reveal" style="margin-top: var(--element-gap); max-width: 700px;">Not one monolithic AI. A team of specialized agents, each handling a domain:</p>
+            <div class="grid-2" style="margin-top: var(--content-gap);">
+                <div class="card reveal">
+                    <div class="icon-badge orange">&#x1F4E1;</div>
+                    <h3>Signal Agent</h3>
+                    <p>Ingests POS, inventory, supplier, and logistics data. Normalizes into a unified signal stream. Detects anomalies.</p>
+                </div>
+                <div class="card reveal">
+                    <div class="icon-badge blue">&#x1F4CA;</div>
+                    <h3>Forecast Agent</h3>
+                    <p>Consumption-rate modeling. Replaces batch forecasting with continuous demand sensing. Adapts to seasonality automatically.</p>
+                </div>
+                <div class="card reveal">
+                    <div class="icon-badge green">&#x1F6D2;</div>
+                    <h3>Procurement Agent</h3>
+                    <p>Generates POs, selects vendors, negotiates within parameters. Respects spend limits and preferred supplier lists.</p>
+                </div>
+                <div class="card reveal">
+                    <div class="icon-badge purple">&#x1F504;</div>
+                    <h3>Rebalance Agent</h3>
+                    <p>Optimizes inventory across locations. Identifies surplus/deficit. Triggers inter-facility transfers automatically.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SLIDE 9: LIVE DEMO / POC
+         ============================================ -->
+    <section class="slide bg-gradient-warm bg-grid" id="slide-9">
+        <div class="slide-content">
+            <p class="slide-label reveal">Proof of Concept</p>
+            <h2 class="reveal">We Already Built <span class="accent-text">This</span></h2>
+            <p class="reveal" style="margin-top: var(--element-gap); max-width: 700px;">
+                Dyson Sphere Program is a factory/logistics simulation game. It's literally an ETL + SCM system. We built an MCP server that reads game state and optimizes production chains in real-time.
+            </p>
+            <div class="demo-container reveal pulse" style="margin-top: var(--content-gap);">
+                <div class="demo-header">
+                    <div class="demo-dot" style="background: var(--danger);"></div>
+                    <div class="demo-dot" style="background: var(--warning);"></div>
+                    <div class="demo-dot" style="background: var(--accent-3);"></div>
+                    <span style="font-size: var(--small-size); color: var(--text-secondary); margin-left: 0.5rem;">mcp-dsp-game</span>
+                </div>
+                <div class="terminal-line"><span class="prompt">agent$</span> <span class="cmd">analyze supply-chain --bottlenecks</span></div>
+                <div class="terminal-line"><span class="output">  Bottleneck: Iron Ingot production at 63% capacity</span></div>
+                <div class="terminal-line"><span class="output">  Root cause: 2 smelters idle (no ore feed)</span></div>
+                <div class="terminal-line"><span class="info">  Recommendation: Route ore from Sector 7 surplus</span></div>
+                <div class="terminal-line" style="margin-top: 0.5em;"><span class="prompt">agent$</span> <span class="cmd">rebalance --auto --constraint max_transport=5</span></div>
+                <div class="terminal-line"><span class="output">  Rebalanced: 3 routes optimized, throughput +41%</span></div>
+            </div>
+            <p class="reveal dim-text" style="margin-top: var(--element-gap); text-align: center; font-size: var(--small-size);">
+                Same architecture. Same agent patterns. Real-world supply chains are just bigger Dyson Spheres.
+            </p>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SLIDE 10: GUARDRAILS
+         ============================================ -->
+    <section class="slide bg-grid" id="slide-10">
+        <div class="slide-content">
+            <p class="slide-label reveal">Safety</p>
+            <h2 class="reveal">Autonomous <span class="accent-text">!=</span> Uncontrolled</h2>
+            <p class="reveal" style="margin-top: var(--element-gap); max-width: 700px;">
+                Every agent operates within human-defined constraints. The system does more, not less oversight.
+            </p>
+            <div class="grid-2" style="margin-top: var(--content-gap);">
+                <div class="card reveal">
+                    <h3>&#x1F512; Spend Limits</h3>
+                    <p>Per-PO and daily aggregate caps. Agent cannot exceed without human escalation. Configurable per vendor, category, or agent.</p>
+                </div>
+                <div class="card reveal">
+                    <h3>&#x1F6E1; Vendor Whitelists</h3>
+                    <p>Agent can only order from pre-approved suppliers. New vendor? Requires human approval. No rogue purchasing.</p>
+                </div>
+                <div class="card reveal">
+                    <h3>&#x1F514; Escalation Rules</h3>
+                    <p>Anomaly thresholds trigger human notification. 20% demand spike? Agent handles it. 200% spike? Human gets a call.</p>
+                </div>
+                <div class="card reveal">
+                    <h3>&#x1F4DD; Full Audit Trail</h3>
+                    <p>Every decision, every reasoning chain, every action is logged. Compliance-ready. Explainable AI, not black box.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SLIDE 11: ROADMAP
+         ============================================ -->
+    <section class="slide bg-gradient-cool bg-grid" id="slide-11">
+        <div class="slide-content">
+            <p class="slide-label reveal">Roadmap</p>
+            <h2 class="reveal">From <span class="blue-text">POC</span> to <span class="accent-text">Product</span></h2>
+            <div style="margin-top: var(--content-gap); display: flex; flex-direction: column; gap: var(--element-gap);">
+                <div class="card reveal" style="border-left: 3px solid var(--accent-3);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h3>&#x2705; Phase 1: Simulation POC</h3>
+                            <p>DSP game agent. Bottleneck detection, production optimization, real-time analytics. Proven architecture.</p>
+                        </div>
+                        <span class="green-text" style="font-size: var(--small-size); font-weight: 600; white-space: nowrap;">DONE</span>
+                    </div>
+                </div>
+                <div class="card reveal" style="border-left: 3px solid var(--accent);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h3>&#x1F3AF; Phase 2: Agentic DSP</h3>
+                            <p>Extend POC: autonomous production chain adjustment, demand forecasting, automated rebalancing. Full agent loop.</p>
+                        </div>
+                        <span class="accent-text" style="font-size: var(--small-size); font-weight: 600; white-space: nowrap;">NOW</span>
+                    </div>
+                </div>
+                <div class="card reveal" style="border-left: 3px solid var(--accent-2);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h3>&#x1F680; Phase 3: Real-World Pilot</h3>
+                            <p>Partner with mid-tier distributor. Connect to real POS/inventory systems. Validate agent decisions against human outcomes.</p>
+                        </div>
+                        <span class="blue-text" style="font-size: var(--small-size); font-weight: 600; white-space: nowrap;">NEXT</span>
+                    </div>
+                </div>
+                <div class="card reveal" style="border-left: 3px solid var(--accent-4); opacity: 0.7;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h3>&#x1F30D; Phase 4: Platform</h3>
+                            <p>Multi-tenant SaaS. Configurable agent teams per customer. Self-improving feedback loops per deployment.</p>
+                        </div>
+                        <span class="purple-text" style="font-size: var(--small-size); font-weight: 600; white-space: nowrap;">FUTURE</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SLIDE 12: ASK / CTA
+         ============================================ -->
+    <section class="slide title-slide bg-gradient-warm bg-grid" id="slide-12">
+        <div class="slide-content">
+            <p class="slide-label reveal">Let's Build This</p>
+            <h1 class="reveal">The <span class="accent-text">Ask</span></h1>
+            <div style="margin-top: var(--content-gap); max-width: 700px; margin-left: auto; margin-right: auto;">
+                <div class="card reveal pulse" style="text-align: left; border: 1px solid rgba(249, 115, 22, 0.3);">
+                    <p style="color: var(--text-primary); font-size: var(--h3-size); font-weight: 500; margin-bottom: var(--element-gap);">What I'm looking for:</p>
+                    <p style="margin-bottom: 0.5em;">&#x1F4AC; &nbsp;<strong style="color: var(--text-primary);">Feedback</strong> &mdash; Does this resonate? What's missing?</p>
+                    <p style="margin-bottom: 0.5em;">&#x1F91D; &nbsp;<strong style="color: var(--text-primary);">Connections</strong> &mdash; Know a distributor who'd pilot this?</p>
+                    <p style="margin-bottom: 0.5em;">&#x1F9E0; &nbsp;<strong style="color: var(--text-primary);">Challenge</strong> &mdash; Where does this thesis break down?</p>
+                    <p>&#x1F527; &nbsp;<strong style="color: var(--text-primary);">Collaborate</strong> &mdash; Want to build a piece of this together?</p>
+                </div>
+            </div>
+            <p class="reveal title-meta" style="margin-top: var(--content-gap);">
+                Matthew Snow &nbsp;&bull;&nbsp; M2AI &nbsp;&bull;&nbsp; matthew@m2ai.dev
+            </p>
+        </div>
+    </section>
+
+    <!-- ============================================
+       JAVASCRIPT: Navigation + Animations
+       ============================================ -->
+    <script>
+        /* ===========================================
+           SLIDE PRESENTATION CONTROLLER
+           Handles scroll-based navigation, keyboard,
+           touch, progress bar, and reveal animations
+           =========================================== */
+        class SlidePresentation {
+            constructor() {
+                this.slides = document.querySelectorAll('.slide');
+                this.currentSlide = 0;
+                this.totalSlides = this.slides.length;
+                this.isScrolling = false;
+                this.scrollCooldown = 800;
+
+                this.initNavDots();
+                this.initObserver();
+                this.initKeyboard();
+                this.initTouch();
+                this.initWheel();
+                this.updateProgress();
+
+                // Initial visibility
+                this.slides[0].classList.add('visible');
+            }
+
+            /* --- Navigation Dots --- */
+            initNavDots() {
+                const nav = document.getElementById('navDots');
+                this.slides.forEach((_, i) => {
+                    const dot = document.createElement('button');
+                    dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+                    dot.setAttribute('aria-label', `Go to slide ${i + 1}`);
+                    dot.addEventListener('click', () => this.goToSlide(i));
+                    nav.appendChild(dot);
+                });
+                this.dots = nav.querySelectorAll('.nav-dot');
+            }
+
+            /* --- Intersection Observer for scroll-triggered animations --- */
+            initObserver() {
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('visible');
+                            const index = Array.from(this.slides).indexOf(entry.target);
+                            if (index !== -1) {
+                                this.currentSlide = index;
+                                this.updateDots();
+                                this.updateProgress();
+                            }
+                        }
+                    });
+                }, { threshold: 0.5 });
+
+                this.slides.forEach(slide => observer.observe(slide));
+            }
+
+            /* --- Keyboard Navigation --- */
+            initKeyboard() {
+                document.addEventListener('keydown', (e) => {
+                    switch(e.key) {
+                        case 'ArrowDown':
+                        case 'ArrowRight':
+                        case ' ':
+                            e.preventDefault();
+                            this.next();
+                            break;
+                        case 'ArrowUp':
+                        case 'ArrowLeft':
+                            e.preventDefault();
+                            this.prev();
+                            break;
+                        case 'Home':
+                            e.preventDefault();
+                            this.goToSlide(0);
+                            break;
+                        case 'End':
+                            e.preventDefault();
+                            this.goToSlide(this.totalSlides - 1);
+                            break;
+                    }
+                });
+            }
+
+            /* --- Touch/Swipe Support --- */
+            initTouch() {
+                let startY = 0;
+                let startX = 0;
+
+                document.addEventListener('touchstart', (e) => {
+                    startY = e.touches[0].clientY;
+                    startX = e.touches[0].clientX;
+                }, { passive: true });
+
+                document.addEventListener('touchend', (e) => {
+                    const diffY = startY - e.changedTouches[0].clientY;
+                    const diffX = startX - e.changedTouches[0].clientX;
+
+                    // Only navigate if vertical swipe is dominant
+                    if (Math.abs(diffY) > Math.abs(diffX) && Math.abs(diffY) > 50) {
+                        if (diffY > 0) this.next();
+                        else this.prev();
+                    }
+                }, { passive: true });
+            }
+
+            /* --- Mouse Wheel --- */
+            initWheel() {
+                document.addEventListener('wheel', (e) => {
+                    if (this.isScrolling) return;
+                    this.isScrolling = true;
+
+                    if (e.deltaY > 0) this.next();
+                    else if (e.deltaY < 0) this.prev();
+
+                    setTimeout(() => { this.isScrolling = false; }, this.scrollCooldown);
+                }, { passive: true });
+            }
+
+            /* --- Navigation Methods --- */
+            next() {
+                if (this.currentSlide < this.totalSlides - 1) {
+                    this.goToSlide(this.currentSlide + 1);
+                }
+            }
+
+            prev() {
+                if (this.currentSlide > 0) {
+                    this.goToSlide(this.currentSlide - 1);
+                }
+            }
+
+            goToSlide(index) {
+                this.currentSlide = index;
+                this.slides[index].scrollIntoView({ behavior: 'smooth' });
+                this.updateDots();
+                this.updateProgress();
+            }
+
+            updateDots() {
+                this.dots.forEach((dot, i) => {
+                    dot.classList.toggle('active', i === this.currentSlide);
+                });
+            }
+
+            updateProgress() {
+                const progress = ((this.currentSlide + 1) / this.totalSlides) * 100;
+                document.getElementById('progressBar').style.width = `${progress}%`;
+            }
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            new SlidePresentation();
+        });
+    </script>
+</body>
+</html>

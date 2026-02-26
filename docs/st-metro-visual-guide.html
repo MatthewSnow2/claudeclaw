@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ST Metro - The Self-Improving Software Factory</title>
+    <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=clash-display@400;500;600;700&f[]=satoshi@400;500;700&display=swap">
+    <style>
+        /* ===========================================
+           THEME: Dark Cyber / ST Metro
+           Inspired by the Transformers naming convention
+           =========================================== */
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --accent: #00e5ff;
+            --accent-glow: rgba(0, 229, 255, 0.25);
+            --accent-2: #7c3aed;
+            --accent-3: #f59e0b;
+            --accent-4: #10b981;
+            --danger: #ef4444;
+            --font-display: 'Clash Display', sans-serif;
+            --font-body: 'Satoshi', sans-serif;
+            --title-size: clamp(2rem, 6vw, 4.5rem);
+            --h2-size: clamp(1.5rem, 4vw, 2.75rem);
+            --h3-size: clamp(1.1rem, 2.5vw, 1.5rem);
+            --body-size: clamp(0.75rem, 1.4vw, 1.05rem);
+            --small-size: clamp(0.65rem, 1vw, 0.85rem);
+            --slide-padding: clamp(1.5rem, 4vw, 4rem);
+            --content-gap: clamp(0.75rem, 2vw, 1.5rem);
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html {
+            scroll-snap-type: y mandatory;
+            scroll-behavior: smooth;
+            height: 100%;
+            overflow-x: hidden;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100%;
+            overflow-x: hidden;
+        }
+
+        /* ===========================================
+           SLIDE BASE
+           =========================================== */
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            padding: var(--slide-padding);
+        }
+
+        .slide-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            max-width: 1100px;
+            width: 100%;
+            max-height: 100%;
+            overflow: hidden;
+        }
+
+        /* ===========================================
+           BACKGROUNDS
+           =========================================== */
+        .bg-grid {
+            background-image:
+                linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        .bg-gradient-1 {
+            background:
+                radial-gradient(ellipse at 20% 80%, rgba(124,58,237,0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(0,229,255,0.1) 0%, transparent 50%),
+                var(--bg-primary);
+        }
+
+        .bg-gradient-2 {
+            background:
+                radial-gradient(ellipse at 70% 70%, rgba(16,185,129,0.12) 0%, transparent 50%),
+                radial-gradient(ellipse at 30% 30%, rgba(0,229,255,0.08) 0%, transparent 50%),
+                var(--bg-primary);
+        }
+
+        .bg-gradient-3 {
+            background:
+                radial-gradient(ellipse at 50% 50%, rgba(245,158,11,0.1) 0%, transparent 50%),
+                var(--bg-primary);
+        }
+
+        /* ===========================================
+           TYPOGRAPHY
+           =========================================== */
+        h1 { font-family: var(--font-display); font-size: var(--title-size); font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; }
+        h2 { font-family: var(--font-display); font-size: var(--h2-size); font-weight: 600; line-height: 1.2; }
+        h3 { font-family: var(--font-display); font-size: var(--h3-size); font-weight: 500; line-height: 1.3; }
+        p, li { font-size: var(--body-size); line-height: 1.6; color: var(--text-secondary); }
+        .label { font-size: var(--small-size); text-transform: uppercase; letter-spacing: 0.15em; color: var(--accent); font-weight: 600; }
+        .accent { color: var(--accent); }
+        .accent-2 { color: var(--accent-2); }
+        .accent-3 { color: var(--accent-3); }
+        .accent-4 { color: var(--accent-4); }
+
+        /* ===========================================
+           ANIMATIONS
+           =========================================== */
+        .reveal {
+            opacity: 0;
+            transform: translateY(25px);
+            transition: opacity 0.7s var(--ease-out-expo), transform 0.7s var(--ease-out-expo);
+        }
+        .slide.visible .reveal { opacity: 1; transform: translateY(0); }
+        .reveal:nth-child(2) { transition-delay: 0.1s; }
+        .reveal:nth-child(3) { transition-delay: 0.2s; }
+        .reveal:nth-child(4) { transition-delay: 0.25s; }
+        .reveal:nth-child(5) { transition-delay: 0.3s; }
+        .reveal:nth-child(6) { transition-delay: 0.35s; }
+        .reveal:nth-child(7) { transition-delay: 0.4s; }
+
+        /* Glow pulse for key elements */
+        @keyframes glow-pulse {
+            0%, 100% { box-shadow: 0 0 15px var(--accent-glow); }
+            50% { box-shadow: 0 0 30px var(--accent-glow), 0 0 60px rgba(0,229,255,0.1); }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        /* ===========================================
+           COMPONENTS
+           =========================================== */
+
+        /* Cards grid */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+            gap: clamp(0.5rem, 1.5vw, 1rem);
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid rgba(0,229,255,0.1);
+            border-radius: 12px;
+            padding: clamp(0.75rem, 2vw, 1.25rem);
+            backdrop-filter: blur(10px);
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .card:hover {
+            border-color: rgba(0,229,255,0.3);
+            transform: translateY(-2px);
+        }
+        .card .emoji { font-size: clamp(1.25rem, 2.5vw, 1.75rem); margin-bottom: 0.4rem; display: block; }
+        .card h3 { margin-bottom: 0.3rem; color: var(--text-primary); }
+        .card p { font-size: var(--small-size); }
+
+        /* Flow diagram */
+        .flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: clamp(0.25rem, 1vw, 0.75rem);
+            flex-wrap: wrap;
+        }
+        .flow-node {
+            background: var(--bg-card);
+            border: 1px solid rgba(0,229,255,0.15);
+            border-radius: 10px;
+            padding: clamp(0.4rem, 1vw, 0.75rem) clamp(0.6rem, 1.5vw, 1rem);
+            text-align: center;
+            font-size: var(--small-size);
+            font-weight: 500;
+            min-width: 80px;
+        }
+        .flow-node.active { border-color: var(--accent); box-shadow: 0 0 15px var(--accent-glow); }
+        .flow-arrow { color: var(--accent); font-size: clamp(0.9rem, 1.5vw, 1.2rem); font-weight: 700; }
+
+        /* Bullet list */
+        .bullet-list { list-style: none; display: flex; flex-direction: column; gap: clamp(0.3rem, 0.8vh, 0.6rem); }
+        .bullet-list li { padding-left: 1.5em; position: relative; }
+        .bullet-list li::before { content: ''; position: absolute; left: 0; top: 0.5em; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+        /* Score bar */
+        .score-bar {
+            display: flex; align-items: center; gap: 0.5rem;
+            font-size: var(--small-size); margin-bottom: 0.3rem;
+        }
+        .score-bar .bar {
+            flex: 1; height: 6px; background: rgba(255,255,255,0.05);
+            border-radius: 3px; overflow: hidden;
+        }
+        .score-bar .bar-fill {
+            height: 100%; border-radius: 3px;
+            transition: width 1.5s var(--ease-out-expo);
+            width: 0;
+        }
+        .slide.visible .bar-fill { width: var(--fill); }
+
+        /* Status badge */
+        .badge {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            font-size: var(--small-size); font-weight: 600;
+            padding: 0.15rem 0.5rem; border-radius: 20px;
+        }
+        .badge.live { background: rgba(16,185,129,0.15); color: #10b981; }
+        .badge.progress { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .badge.available { background: rgba(0,229,255,0.1); color: var(--accent); }
+
+        /* Level indicator */
+        .levels { display: flex; flex-direction: column; gap: clamp(0.2rem, 0.5vh, 0.4rem); }
+        .level-row {
+            display: flex; align-items: center; gap: 0.75rem;
+            font-size: var(--small-size); padding: clamp(0.3rem, 0.7vh, 0.5rem) 0.75rem;
+            border-radius: 8px; border-left: 3px solid transparent;
+        }
+        .level-row.current { background: rgba(0,229,255,0.08); border-left-color: var(--accent); }
+        .level-num { font-family: var(--font-display); font-weight: 700; font-size: var(--body-size); min-width: 1.5rem; }
+
+        /* Two column layout */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: clamp(1rem, 2vw, 2rem);
+            align-items: start;
+        }
+        @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+        /* Separator */
+        .sep { width: 50px; height: 3px; background: var(--accent); border-radius: 2px; margin: var(--content-gap) 0; }
+
+        /* Progress bar */
+        .progress-bar {
+            position: fixed; top: 0; left: 0; height: 3px;
+            background: linear-gradient(90deg, var(--accent), var(--accent-2));
+            z-index: 100; transition: width 0.3s;
+            width: 0;
+        }
+
+        /* Nav dots */
+        .nav-dots {
+            position: fixed; right: clamp(0.5rem, 1.5vw, 1.5rem);
+            top: 50%; transform: translateY(-50%);
+            display: flex; flex-direction: column; gap: 8px; z-index: 50;
+        }
+        .nav-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: rgba(255,255,255,0.15); cursor: pointer;
+            transition: background 0.3s, transform 0.3s;
+            border: none; padding: 0;
+        }
+        .nav-dot.active { background: var(--accent); transform: scale(1.3); }
+
+        /* Slide counter */
+        .slide-counter {
+            position: fixed; bottom: clamp(0.5rem, 1.5vw, 1.5rem);
+            right: clamp(0.5rem, 1.5vw, 1.5rem);
+            font-size: var(--small-size); color: var(--text-secondary);
+            z-index: 50; font-family: var(--font-display);
+        }
+
+        /* ===========================================
+           RESPONSIVE
+           =========================================== */
+        @media (max-height: 700px) {
+            :root {
+                --slide-padding: clamp(1rem, 3vw, 2rem);
+                --content-gap: clamp(0.4rem, 1.5vw, 1rem);
+                --title-size: clamp(1.5rem, 5vw, 3rem);
+                --h2-size: clamp(1.25rem, 3.5vw, 2rem);
+            }
+        }
+        @media (max-height: 600px) {
+            :root {
+                --slide-padding: clamp(0.75rem, 2.5vw, 1.5rem);
+                --title-size: clamp(1.25rem, 4.5vw, 2.5rem);
+                --body-size: clamp(0.65rem, 1.2vw, 0.9rem);
+            }
+            .nav-dots { display: none; }
+        }
+        @media (max-height: 500px) {
+            :root {
+                --slide-padding: clamp(0.5rem, 2vw, 1rem);
+                --title-size: clamp(1rem, 4vw, 2rem);
+                --h2-size: clamp(0.9rem, 2.5vw, 1.5rem);
+            }
+        }
+        @media (max-width: 600px) {
+            :root { --title-size: clamp(1.5rem, 8vw, 2.5rem); }
+            .card-grid { grid-template-columns: 1fr 1fr; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.2s !important; }
+            html { scroll-behavior: auto; }
+        }
+    </style>
+</head>
+<body>
+    <div class="progress-bar" id="progressBar"></div>
+    <nav class="nav-dots" id="navDots"></nav>
+    <div class="slide-counter" id="slideCounter"></div>
+
+    <!-- ==========================================
+         SLIDE 1: TITLE
+         ========================================== -->
+    <section class="slide bg-grid bg-gradient-1">
+        <div class="slide-content" style="text-align:center; align-items:center;">
+            <p class="label reveal" style="margin-bottom:var(--content-gap);">M2AI Presents</p>
+            <h1 class="reveal">ST <span class="accent">Metro</span></h1>
+            <p class="reveal" style="font-size:var(--h3-size); margin-top:0.5rem; color:var(--text-secondary);">The Self-Improving Software Factory</p>
+            <div class="sep reveal" style="margin:var(--content-gap) auto;"></div>
+            <p class="reveal" style="max-width:500px;">A fully autonomous system that watches the market, builds software, and makes itself smarter every week.</p>
+            <p class="reveal" style="margin-top:var(--content-gap); font-size:var(--small-size); color:var(--text-secondary);">Scroll or use arrow keys to navigate</p>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 2: THE CONCEPT
+         ========================================== -->
+    <section class="slide bg-gradient-2">
+        <div class="slide-content">
+            <p class="label reveal">The Concept</p>
+            <h2 class="reveal" style="margin-top:0.5rem;">What if software could <span class="accent">build itself?</span></h2>
+            <div class="sep reveal"></div>
+            <ul class="bullet-list reveal" style="max-width:700px;">
+                <li>Watches the market for problems worth solving</li>
+                <li>Synthesizes signals into concrete product ideas</li>
+                <li>Automatically decides which ideas to build</li>
+                <li>Builds them with zero human code or review</li>
+                <li>Observes results and improves itself</li>
+                <li>The cycle repeats -- smarter each week</li>
+            </ul>
+            <p class="reveal" style="margin-top:var(--content-gap); font-size:var(--small-size); color:var(--accent);">Named after the Transformers' Autobot city. Each component is a Transformer.</p>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 3: THE FLOW
+         ========================================== -->
+    <section class="slide bg-grid">
+        <div class="slide-content" style="align-items:center;">
+            <p class="label reveal">The Pipeline</p>
+            <h2 class="reveal" style="margin-top:0.5rem; text-align:center;">Signal to Shipped Product</h2>
+            <div class="sep reveal" style="margin:var(--content-gap) auto;"></div>
+            <div class="flow reveal" style="margin-top:var(--content-gap);">
+                <div class="flow-node">Internet</div>
+                <span class="flow-arrow">&rarr;</span>
+                <div class="flow-node active">Research Agents</div>
+                <span class="flow-arrow">&rarr;</span>
+                <div class="flow-node">IdeaForge</div>
+                <span class="flow-arrow">&rarr;</span>
+                <div class="flow-node active">Metroplex</div>
+                <span class="flow-arrow">&rarr;</span>
+                <div class="flow-node">YCE Harness</div>
+                <span class="flow-arrow">&rarr;</span>
+                <div class="flow-node active">GitHub</div>
+            </div>
+            <div class="flow reveal" style="margin-top:0.75rem;">
+                <div class="flow-node" style="border-color:rgba(124,58,237,0.3);">ST Factory</div>
+                <span class="flow-arrow" style="color:var(--accent-2);">&larr;</span>
+                <div class="flow-node" style="border-color:rgba(124,58,237,0.3);">Outcomes</div>
+                <span class="flow-arrow" style="color:var(--accent-2);">&rarr;</span>
+                <div class="flow-node" style="border-color:rgba(124,58,237,0.3);">Sky-Lynx</div>
+                <span class="flow-arrow" style="color:var(--accent-2);">&rarr;</span>
+                <div class="flow-node" style="border-color:rgba(124,58,237,0.3);">Academy</div>
+                <span class="flow-arrow" style="color:var(--accent-2);">&rarr;</span>
+                <div class="flow-node" style="border-color:rgba(124,58,237,0.3);">Next Cycle</div>
+            </div>
+            <p class="reveal" style="margin-top:var(--content-gap); text-align:center; font-size:var(--small-size); color:var(--accent-2);">The bottom row is the self-improvement loop -- the system gets smarter autonomously</p>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 4: ACT 1 - THE SCOUTS
+         ========================================== -->
+    <section class="slide bg-gradient-1">
+        <div class="slide-content">
+            <p class="label reveal">Act 1</p>
+            <h2 class="reveal" style="margin-top:0.5rem;">The Scouts <span style="font-size:0.7em;">-- Signal Ingestion</span></h2>
+            <div class="sep reveal"></div>
+            <p class="reveal">Every day at 5 AM, four AI agents scan the internet for opportunities:</p>
+            <div class="card-grid reveal" style="margin-top:var(--content-gap);">
+                <div class="card">
+                    <span class="emoji">&#128218;</span>
+                    <h3>ArXiv Scanner</h3>
+                    <p>Academic papers on AI, ML, autonomy</p>
+                    <p style="color:var(--accent); margin-top:0.25rem;">Perplexity</p>
+                </div>
+                <div class="card">
+                    <span class="emoji">&#128736;</span>
+                    <h3>Tool Monitor</h3>
+                    <p>GitHub trending repos &amp; frameworks</p>
+                    <p style="color:var(--accent-3); margin-top:0.25rem;">Gemini</p>
+                </div>
+                <div class="card">
+                    <span class="emoji">&#127758;</span>
+                    <h3>Domain Watcher</h3>
+                    <p>Hacker News, industry forums</p>
+                    <p style="color:var(--accent-4); margin-top:0.25rem;">ChatGPT</p>
+                </div>
+                <div class="card">
+                    <span class="emoji">&#128161;</span>
+                    <h3>Idea Surfacer</h3>
+                    <p>Synthesizes signals into ideas</p>
+                    <p style="color:var(--accent-2); margin-top:0.25rem;">Claude</p>
+                </div>
+            </div>
+            <p class="reveal" style="margin-top:var(--content-gap); font-size:var(--small-size);">
+                <strong class="accent">Anti-monoculture:</strong> 4 different LLMs = 4 different perspectives. No shared blind spots.
+            </p>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 5: ACT 2 - THE FILTER
+         ========================================== -->
+    <section class="slide bg-gradient-3">
+        <div class="slide-content">
+            <p class="label reveal">Act 2</p>
+            <h2 class="reveal" style="margin-top:0.5rem;">The Filter <span style="font-size:0.7em;">-- IdeaForge + Triage</span></h2>
+            <div class="sep reveal"></div>
+            <p class="reveal">Not every signal becomes an idea. Not every idea gets built.</p>
+            <div class="two-col reveal" style="margin-top:var(--content-gap);">
+                <div>
+                    <h3 style="margin-bottom:0.5rem;">5-Dimension Scoring</h3>
+                    <div class="score-bar"><span>Opportunity</span><div class="bar"><div class="bar-fill" style="--fill:85%; background:var(--accent);"></div></div></div>
+                    <div class="score-bar"><span>Problem Severity</span><div class="bar"><div class="bar-fill" style="--fill:70%; background:var(--accent-2);"></div></div></div>
+                    <div class="score-bar"><span>Feasibility</span><div class="bar"><div class="bar-fill" style="--fill:60%; background:var(--accent-4);"></div></div></div>
+                    <div class="score-bar"><span>Why Now</span><div class="bar"><div class="bar-fill" style="--fill:75%; background:var(--accent-3);"></div></div></div>
+                    <div class="score-bar"><span>Competition</span><div class="bar"><div class="bar-fill" style="--fill:50%; background:var(--danger);"></div></div></div>
+                </div>
+                <div>
+                    <h3 style="margin-bottom:0.5rem;">Classification</h3>
+                    <ul class="bullet-list">
+                        <li><strong>Tool</strong> -- cheap to build, quick value</li>
+                        <li><strong>Agent</strong> -- medium complexity, AI-powered</li>
+                        <li><strong>Product</strong> -- full product, sustained effort</li>
+                        <li><strong>Dismiss</strong> -- not worth pursuing</li>
+                    </ul>
+                    <p style="margin-top:0.75rem; font-size:var(--small-size); color:var(--accent);">Score >= 65/100? Approved for build.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 6: ACT 3 - THE BUILDER
+         ========================================== -->
+    <section class="slide bg-grid bg-gradient-2">
+        <div class="slide-content">
+            <p class="label reveal">Act 3</p>
+            <h2 class="reveal" style="margin-top:0.5rem;">The Builder <span style="font-size:0.7em;">-- YCE Harness</span></h2>
+            <div class="sep reveal"></div>
+            <p class="reveal">Not one agent. <strong class="accent">Five agents working in parallel.</strong></p>
+            <div class="card-grid reveal" style="margin-top:var(--content-gap);">
+                <div class="card">
+                    <span class="emoji">&#127891;</span>
+                    <h3>Orchestrator</h3>
+                    <p>Breaks spec into tasks, coordinates all agents</p>
+                    <p style="color:var(--text-secondary); margin-top:0.2rem; font-size:var(--small-size);">Haiku (fast)</p>
+                </div>
+                <div class="card">
+                    <span class="emoji">&#128187;</span>
+                    <h3>Coding Agent</h3>
+                    <p>Writes features TDD-style in isolated worktrees</p>
+                    <p style="color:var(--text-secondary); margin-top:0.2rem; font-size:var(--small-size);">Sonnet (smart)</p>
+                </div>
+                <div class="card">
+                    <span class="emoji">&#128025;</span>
+                    <h3>GitHub Agent</h3>
+                    <p>Commits, branches, PRs, release management</p>
+                    <p style="color:var(--text-secondary); margin-top:0.2rem; font-size:var(--small-size);">Sonnet</p>
+                </div>
+                <div class="card">
+                    <span class="emoji">&#128203;</span>
+                    <h3>Linear Agent</h3>
+                    <p>Creates issues, tracks progress</p>
+                    <p style="color:var(--text-secondary); margin-top:0.2rem; font-size:var(--small-size);">Sonnet</p>
+                </div>
+                <div class="card">
+                    <span class="emoji">&#128270;</span>
+                    <h3>QA Agent</h3>
+                    <p>Tests with Playwright, validates quality</p>
+                    <p style="color:var(--text-secondary); margin-top:0.2rem; font-size:var(--small-size);">Sonnet</p>
+                </div>
+            </div>
+            <p class="reveal" style="margin-top:var(--content-gap); font-size:var(--small-size);">
+                Output: Feature branches with tests &rarr; merged &rarr; deployed to GitHub / Vercel / Railway
+            </p>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 7: ACT 4 - THE LOOP
+         ========================================== -->
+    <section class="slide bg-gradient-1">
+        <div class="slide-content">
+            <p class="label reveal" style="color:var(--accent-2);">Act 4</p>
+            <h2 class="reveal" style="margin-top:0.5rem;">The Loop <span style="font-size:0.7em;">-- Self-Improvement</span></h2>
+            <div class="sep reveal" style="background:var(--accent-2);"></div>
+            <p class="reveal">This is where ST Metro becomes a <strong class="accent-2">learning system</strong>.</p>
+            <div class="two-col reveal" style="margin-top:var(--content-gap);">
+                <div>
+                    <h3>Every Sunday at 2 AM:</h3>
+                    <ul class="bullet-list" style="margin-top:0.5rem;">
+                        <li><strong>Sky-Lynx reads outcomes</strong> -- what shipped, what failed?</li>
+                        <li><strong>Identifies patterns</strong> -- "ArXiv signals score higher"</li>
+                        <li><strong>Generates recommendations</strong> -- typed, structured improvements</li>
+                        <li><strong>Academy applies patches</strong> -- persona YAMLs updated automatically</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>Recommendation Types:</h3>
+                    <div class="card" style="margin-top:0.5rem; padding:0.75rem;">
+                        <p style="font-size:var(--small-size);"><span class="accent-2">Voice:</span> "Persona X should be more conservative"</p>
+                        <p style="font-size:var(--small-size); margin-top:0.3rem;"><span class="accent-3">Framework:</span> "Add supply chain analysis"</p>
+                        <p style="font-size:var(--small-size); margin-top:0.3rem;"><span class="accent-4">Constraint:</span> "Reject ideas over $500K build cost"</p>
+                        <p style="font-size:var(--small-size); margin-top:0.3rem;"><span class="accent">CLAUDE.md:</span> "Check test coverage before shipping"</p>
+                    </div>
+                </div>
+            </div>
+            <p class="reveal" style="margin-top:var(--content-gap); font-size:var(--small-size); color:var(--accent-2); text-align:center;">
+                The system watches itself work. No human retraining required.
+            </p>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 8: ACT 5 - METROPLEX
+         ========================================== -->
+    <section class="slide bg-grid bg-gradient-3">
+        <div class="slide-content">
+            <p class="label reveal" style="color:var(--accent-3);">Act 5</p>
+            <h2 class="reveal" style="margin-top:0.5rem;">The Coordinator <span style="font-size:0.7em;">-- Metroplex</span></h2>
+            <div class="sep reveal" style="background:var(--accent-3);"></div>
+            <div class="two-col reveal" style="margin-top:var(--content-gap);">
+                <div>
+                    <h3>Three Gates:</h3>
+                    <ul class="bullet-list" style="margin-top:0.5rem;">
+                        <li><strong>Triage Gate</strong> -- score and approve/reject ideas</li>
+                        <li><strong>Build Gate</strong> -- dispatch to YCE Harness</li>
+                        <li><strong>Patch Gate</strong> -- apply persona improvements</li>
+                    </ul>
+                    <p style="margin-top:0.75rem; font-size:var(--small-size);">Runs as a systemd service, cycling every 60 seconds.</p>
+                </div>
+                <div>
+                    <h3>Safety Guardrails:</h3>
+                    <div class="card" style="margin-top:0.5rem; border-color:rgba(245,158,11,0.2);">
+                        <p style="font-size:var(--small-size);"><span class="accent-3">Circuit Breaker:</span> 3 failures = gate pauses</p>
+                        <p style="font-size:var(--small-size); margin-top:0.3rem;"><span class="accent-3">Per-Cycle Caps:</span> Max 3 ideas, 5 patches</p>
+                        <p style="font-size:var(--small-size); margin-top:0.3rem;"><span class="accent-3">Schedule:</span> Active 9 AM - 10 PM, Mon-Fri</p>
+                        <p style="font-size:var(--small-size); margin-top:0.3rem;"><span class="accent-3">Kill Switch:</span> One env var stops everything</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 9: SUPPORTING SYSTEMS
+         ========================================== -->
+    <section class="slide bg-gradient-2">
+        <div class="slide-content">
+            <p class="label reveal">Supporting Systems</p>
+            <h2 class="reveal" style="margin-top:0.5rem;">Memory &amp; Command</h2>
+            <div class="sep reveal"></div>
+            <div class="two-col reveal" style="margin-top:var(--content-gap);">
+                <div class="card" style="border-color:rgba(0,229,255,0.2);">
+                    <span class="emoji">&#129504;</span>
+                    <h3>Perceptor -- Memory</h3>
+                    <p style="margin-top:0.3rem;">Cross-session context sharing via GitHub. Conversations from weeks ago instantly recoverable. 5 MCP tools for save, load, search, sync.</p>
+                    <p style="margin-top:0.5rem; font-size:var(--small-size); color:var(--accent);">No "what were we talking about?" moments.</p>
+                </div>
+                <div class="card" style="border-color:rgba(124,58,237,0.2);">
+                    <span class="emoji">&#128187;</span>
+                    <h3>Data -- Chief of Staff</h3>
+                    <p style="margin-top:0.3rem;">Telegram bot with multi-LLM routing (@gemini, @research, @ollama). Full tool access: SSH, MCP, file system. Morning briefings, evening reviews.</p>
+                    <p style="margin-top:0.5rem; font-size:var(--small-size); color:var(--accent-2);">The human interface to the entire ecosystem.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 10: CURRENT STATUS
+         ========================================== -->
+    <section class="slide bg-grid">
+        <div class="slide-content">
+            <p class="label reveal">Status</p>
+            <h2 class="reveal" style="margin-top:0.5rem;">Live &amp; Proven</h2>
+            <div class="sep reveal"></div>
+            <div class="card-grid reveal" style="margin-top:var(--content-gap); grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));">
+                <div class="card" style="text-align:center;">
+                    <span class="badge live">Running</span>
+                    <h3 style="margin-top:0.4rem;">Research Agents</h3>
+                    <p>Daily 5 AM scans</p>
+                </div>
+                <div class="card" style="text-align:center;">
+                    <span class="badge live">Running</span>
+                    <h3 style="margin-top:0.4rem;">IdeaForge</h3>
+                    <p>Score &amp; classify</p>
+                </div>
+                <div class="card" style="text-align:center;">
+                    <span class="badge live">Running</span>
+                    <h3 style="margin-top:0.4rem;">Metroplex</h3>
+                    <p>Triage + dispatch</p>
+                </div>
+                <div class="card" style="text-align:center;">
+                    <span class="badge live">Running</span>
+                    <h3 style="margin-top:0.4rem;">ST Factory</h3>
+                    <p>Metrics &amp; outcomes</p>
+                </div>
+                <div class="card" style="text-align:center;">
+                    <span class="badge live">Running</span>
+                    <h3 style="margin-top:0.4rem;">Sky-Lynx</h3>
+                    <p>Weekly analysis</p>
+                </div>
+                <div class="card" style="text-align:center;">
+                    <span class="badge available">Available</span>
+                    <h3 style="margin-top:0.4rem;">YCE Harness</h3>
+                    <p>Autonomous builder</p>
+                </div>
+            </div>
+            <p class="reveal" style="margin-top:var(--content-gap); text-align:center; font-size:var(--small-size);">
+                <strong class="accent">Proven:</strong> Signal ingestion &rarr; triage &rarr; approval. One idea shipped through the full pipeline.
+            </p>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 11: LEVEL 5 VISION
+         ========================================== -->
+    <section class="slide bg-gradient-1">
+        <div class="slide-content">
+            <p class="label reveal">The Vision</p>
+            <h2 class="reveal" style="margin-top:0.5rem;">Level 5 Autonomy</h2>
+            <div class="sep reveal"></div>
+            <div class="levels reveal" style="margin-top:var(--content-gap); max-width:700px;">
+                <div class="level-row">
+                    <span class="level-num" style="color:var(--text-secondary);">L1</span>
+                    <span>AI assists human coding</span>
+                    <span style="margin-left:auto; font-size:var(--small-size); color:var(--text-secondary);">GitHub Copilot</span>
+                </div>
+                <div class="level-row">
+                    <span class="level-num" style="color:var(--text-secondary);">L2</span>
+                    <span>AI writes code, human reviews</span>
+                    <span style="margin-left:auto; font-size:var(--small-size); color:var(--text-secondary);">Claude Code</span>
+                </div>
+                <div class="level-row">
+                    <span class="level-num" style="color:var(--text-secondary);">L3</span>
+                    <span>AI writes + reviews, human deploys</span>
+                    <span style="margin-left:auto; font-size:var(--small-size); color:var(--text-secondary);">YCE Harness</span>
+                </div>
+                <div class="level-row">
+                    <span class="level-num" style="color:var(--accent-3);">L4</span>
+                    <span>AI writes, reviews, deploys -- human monitors</span>
+                    <span style="margin-left:auto; font-size:var(--small-size); color:var(--accent-3);">Metroplex</span>
+                </div>
+                <div class="level-row current">
+                    <span class="level-num" style="color:var(--accent);">L5</span>
+                    <span><strong>AI writes, reviews, deploys, monitors, improves itself</strong></span>
+                    <span style="margin-left:auto; font-size:var(--small-size); color:var(--accent);">ST Metro</span>
+                </div>
+            </div>
+            <p class="reveal" style="margin-top:var(--content-gap); font-size:var(--small-size); max-width:700px;">
+                Based on Dan Shapiro's 5-level AI adoption framework. StrongDM's constraints: code must not be written by humans, code must not be reviewed by humans. ST Metro closes all human gates.
+            </p>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 12: CLOSING
+         ========================================== -->
+    <section class="slide bg-grid bg-gradient-1" style="text-align:center;">
+        <div class="slide-content" style="align-items:center;">
+            <h2 class="reveal">The factory gets <span class="accent">smarter every week</span></h2>
+            <p class="reveal" style="margin-top:var(--content-gap); max-width:550px; font-size:var(--body-size);">
+                Sky-Lynx observes &rarr; Recommendations generated &rarr; Academy upgrades personas &rarr; Next cycle starts with better judgment. No human intervention required.
+            </p>
+            <div class="sep reveal" style="margin:var(--content-gap) auto;"></div>
+            <p class="reveal" style="font-size:var(--small-size); color:var(--text-secondary);">
+                Built by Matthew Snow / M2AI
+            </p>
+            <p class="reveal" style="font-size:var(--small-size); color:var(--text-secondary); margin-top:0.3rem;">
+                February 2026
+            </p>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         JAVASCRIPT: Navigation & Animations
+         =========================================== -->
+    <script>
+    class SlidePresentation {
+        constructor() {
+            this.slides = document.querySelectorAll('.slide');
+            this.totalSlides = this.slides.length;
+            this.currentSlide = 0;
+            this.progressBar = document.getElementById('progressBar');
+            this.navDotsContainer = document.getElementById('navDots');
+            this.slideCounter = document.getElementById('slideCounter');
+
+            this.createNavDots();
+            this.setupObserver();
+            this.setupKeyboard();
+            this.updateUI();
+        }
+
+        createNavDots() {
+            for (let i = 0; i < this.totalSlides; i++) {
+                const dot = document.createElement('button');
+                dot.className = 'nav-dot';
+                dot.setAttribute('aria-label', `Go to slide ${i + 1}`);
+                dot.addEventListener('click', () => {
+                    this.slides[i].scrollIntoView({ behavior: 'smooth' });
+                });
+                this.navDotsContainer.appendChild(dot);
+            }
+        }
+
+        setupObserver() {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                        const index = Array.from(this.slides).indexOf(entry.target);
+                        this.currentSlide = index;
+                        this.updateUI();
+                    }
+                });
+            }, { threshold: 0.4 });
+
+            this.slides.forEach(slide => observer.observe(slide));
+        }
+
+        setupKeyboard() {
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === ' ') {
+                    e.preventDefault();
+                    this.goToSlide(this.currentSlide + 1);
+                } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    this.goToSlide(this.currentSlide - 1);
+                }
+            });
+        }
+
+        goToSlide(index) {
+            if (index >= 0 && index < this.totalSlides) {
+                this.slides[index].scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        updateUI() {
+            // Progress bar
+            const progress = ((this.currentSlide + 1) / this.totalSlides) * 100;
+            this.progressBar.style.width = progress + '%';
+
+            // Nav dots
+            const dots = this.navDotsContainer.querySelectorAll('.nav-dot');
+            dots.forEach((dot, i) => {
+                dot.classList.toggle('active', i === this.currentSlide);
+            });
+
+            // Slide counter
+            this.slideCounter.textContent = `${this.currentSlide + 1} / ${this.totalSlides}`;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => new SlidePresentation());
+    </script>
+</body>
+</html>

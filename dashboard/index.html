@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Dashboard - M2AI Command Center</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #FAFBFC;
+    --card: #FFFFFF;
+    --text: #1A1A2E;
+    --text-secondary: #6B7280;
+    --accent: #E8735A;
+    --accent-light: #FDF2F0;
+    --ok: #10B981;
+    --ok-bg: #ECFDF5;
+    --warning: #F59E0B;
+    --warning-bg: #FFFBEB;
+    --error: #EF4444;
+    --error-bg: #FEF2F2;
+    --info: #6366F1;
+    --info-bg: #EEF2FF;
+    --border: #E5E7EB;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-hover: 0 4px 12px rgba(0,0,0,0.1);
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--border);
+  }
+  .header h1 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .header h1 span { color: var(--accent); }
+  .header-meta {
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: right;
+  }
+  .header-meta .time { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--text); }
+
+  /* Summary bar */
+  .summary-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+    text-align: center;
+  }
+  .stat-card .number {
+    font-size: 32px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .stat-card .label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+  .stat-card.ok .number { color: var(--ok); }
+  .stat-card.warning .number { color: var(--warning); }
+  .stat-card.error .number { color: var(--error); }
+  .stat-card.accent .number { color: var(--accent); }
+
+  /* Timeline chart */
+  .chart-container {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+  }
+  .chart-container h2 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+  .chart-wrapper { height: 180px; }
+
+  /* Sections grid */
+  .sections-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  /* Section card */
+  .section-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+  .section-header:hover { background: #F3F4F6; }
+  .section-header h3 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+  }
+  .section-header .count {
+    font-size: 12px;
+    background: var(--accent-light);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  .section-header .chevron {
+    font-size: 12px;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+  }
+  .section-card.collapsed .section-body { display: none; }
+  .section-card.collapsed .chevron { transform: rotate(-90deg); }
+
+  .section-body { padding: 0; }
+
+  /* Items */
+  .item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid #F3F4F6;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .item:last-child { border-bottom: none; }
+  .item:hover { background: #FAFBFC; }
+
+  .item-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 7px;
+    flex-shrink: 0;
+  }
+  .item-dot.ok { background: var(--ok); }
+  .item-dot.warning { background: var(--warning); }
+  .item-dot.error { background: var(--error); }
+  .item-dot.info { background: var(--info); }
+
+  .item-content { flex: 1; min-width: 0; }
+  .item-text {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .item-detail {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    display: none;
+    line-height: 1.5;
+  }
+  .item.expanded .item-detail { display: block; }
+  .item.expanded { background: #FAFBFC; }
+
+  /* Priority Picker */
+  .priority-section {
+    background: var(--card);
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+  }
+  .priority-section h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .priority-section .subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+
+  .priority-list { list-style: none; }
+  .priority-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    background: white;
+    cursor: grab;
+    transition: all 0.15s;
+  }
+  .priority-item:hover { border-color: var(--accent); box-shadow: var(--shadow-hover); }
+  .priority-item.dragging { opacity: 0.5; border-color: var(--accent); }
+  .priority-item .rank {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .priority-item .rank.unranked { background: var(--border); color: var(--text-secondary); }
+  .priority-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .priority-item label {
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    flex: 1;
+  }
+  .priority-item .drag-handle {
+    color: var(--text-secondary);
+    cursor: grab;
+    font-size: 16px;
+    padding: 0 4px;
+  }
+
+  .priority-output {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: #1A1A2E;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: #E8735A;
+    white-space: pre-line;
+    display: none;
+  }
+  .priority-output.visible { display: block; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 16px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    body { padding: 12px; }
+    .sections-grid { grid-template-columns: 1fr; }
+    .summary-bar { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1><span>Data</span> Dashboard</h1>
+  </div>
+  <div class="header-meta">
+    <div class="time" id="current-time"></div>
+    <div id="report-date">Loading...</div>
+  </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="summary-bar" id="summary-bar">
+  <div class="stat-card ok"><div class="number" id="stat-completed">--</div><div class="label">Completed This Week</div></div>
+  <div class="stat-card warning"><div class="number" id="stat-open">--</div><div class="label">Open Items</div></div>
+  <div class="stat-card error"><div class="number" id="stat-blockers">--</div><div class="label">Needs Attention</div></div>
+  <div class="stat-card accent"><div class="number" id="stat-services">--</div><div class="label">Services Online</div></div>
+</div>
+
+<!-- Timeline Chart -->
+<div class="chart-container">
+  <h2>Weekly Progress</h2>
+  <div class="chart-wrapper">
+    <canvas id="timeline-chart"></canvas>
+  </div>
+</div>
+
+<!-- Priority Picker -->
+<div class="priority-section">
+  <h2>Today's Work Order</h2>
+  <div class="subtitle">Check items to work on. Drag to reorder priority. Saves automatically.</div>
+  <ul class="priority-list" id="priority-list"></ul>
+  <div class="priority-output" id="priority-output"></div>
+</div>
+
+<!-- Report Sections -->
+<div class="sections-grid" id="sections-grid"></div>
+
+<div class="footer">
+  Data Dashboard v1 -- M2AI Command Center -- Auto-refreshes from report JSON
+</div>
+
+<script>
+// --- State ---
+let reportData = null;
+let timelineData = null;
+let priorities = JSON.parse(localStorage.getItem('data-dashboard-priorities') || '[]');
+
+// --- Clock ---
+function updateClock() {
+  const now = new Date();
+  document.getElementById('current-time').textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// --- Load Data ---
+async function loadData() {
+  try {
+    // Load latest report (try latest.json first, then today's dated file)
+    let reportResp = await fetch('reports/latest.json');
+    if (!reportResp.ok) {
+      // Fallback: try today's dated file
+      const today = new Date().toISOString().slice(0, 10);
+      reportResp = await fetch(`reports/${today}_0800.json`);
+    }
+    if (!reportResp.ok) {
+      // Last resort: try undated today file
+      const today = new Date().toISOString().slice(0, 10);
+      reportResp = await fetch(`reports/${today}.json`);
+    }
+    if (reportResp.ok) {
+      reportData = await reportResp.json();
+    }
+
+    // Load timeline
+    const timelineResp = await fetch('reports/timeline.json');
+    if (timelineResp.ok) {
+      timelineData = await timelineResp.json();
+    }
+
+    render();
+  } catch (e) {
+    console.error('Failed to load data:', e);
+    document.getElementById('report-date').textContent = 'Error loading reports';
+  }
+}
+
+// --- Render ---
+function render() {
+  if (!reportData) return;
+
+  // Report date
+  const d = new Date(reportData.timestamp);
+  document.getElementById('report-date').textContent =
+    d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) +
+    ' at ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  // Summary stats
+  const allItems = Object.values(reportData.sections).flatMap(s => s.items);
+  const okCount = allItems.filter(i => i.status === 'ok').length;
+  const warnCount = allItems.filter(i => i.status === 'warning').length;
+  const errCount = allItems.filter(i => i.status === 'error').length;
+  const services = reportData.sections.service_health?.items.length || 0;
+
+  document.getElementById('stat-completed').textContent = timelineData?.totals?.week || okCount;
+  document.getElementById('stat-open').textContent = warnCount;
+  document.getElementById('stat-blockers').textContent = errCount;
+  document.getElementById('stat-services').textContent = services;
+
+  // Timeline chart
+  renderChart();
+
+  // Sections
+  renderSections();
+
+  // Priority picker
+  renderPriorities();
+}
+
+// --- Chart ---
+let chart = null;
+function renderChart() {
+  if (!timelineData?.weekly) return;
+
+  const ctx = document.getElementById('timeline-chart').getContext('2d');
+  if (chart) chart.destroy();
+
+  const labels = timelineData.weekly.map(d => d.day + ' ' + d.date.slice(5));
+  const data = timelineData.weekly.map(d => d.completed);
+  const colors = data.map((v, i) => i === data.length - 1 ? '#E8735A' : '#6366F1');
+
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Items Completed',
+        data,
+        backgroundColor: colors,
+        borderRadius: 6,
+        borderSkipped: false,
+        barThickness: 40,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterBody: function(ctx) {
+              const idx = ctx[0].dataIndex;
+              const items = timelineData.weekly[idx].items;
+              return items.map(i => '- ' + i).join('\n');
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { stepSize: 2, font: { family: 'JetBrains Mono', size: 11 } },
+          grid: { color: '#F3F4F6' }
+        },
+        x: {
+          ticks: { font: { family: 'Inter', size: 12 } },
+          grid: { display: false }
+        }
+      }
+    }
+  });
+}
+
+// --- Sections ---
+function renderSections() {
+  const grid = document.getElementById('sections-grid');
+  grid.innerHTML = '';
+
+  const sectionOrder = ['service_health', 'pipeline', 'activity', 'uncommitted', 'priorities', 'unfinished'];
+
+  for (const key of sectionOrder) {
+    const section = reportData.sections[key];
+    if (!section) continue;
+
+    const card = document.createElement('div');
+    card.className = 'section-card';
+
+    const errCount = section.items.filter(i => i.status === 'error').length;
+    const warnCount = section.items.filter(i => i.status === 'warning').length;
+    let badge = section.items.length;
+    let badgeStyle = '';
+    if (errCount > 0) badgeStyle = 'background:#FEF2F2;color:#EF4444;';
+    else if (warnCount > 0) badgeStyle = 'background:#FFFBEB;color:#F59E0B;';
+
+    card.innerHTML = `
+      <div class="section-header" onclick="toggleSection(this)">
+        <h3>${section.title}</h3>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="count" style="${badgeStyle}">${badge}</span>
+          <span class="chevron">&#9662;</span>
+        </div>
+      </div>
+      <div class="section-body">
+        ${section.items.map(item => `
+          <div class="item" onclick="toggleItem(this)">
+            <div class="item-dot ${item.status}"></div>
+            <div class="item-content">
+              <div class="item-text">${item.text}</div>
+              ${item.detail ? `<div class="item-detail">${item.detail}</div>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    grid.appendChild(card);
+  }
+}
+
+function toggleSection(header) {
+  header.parentElement.classList.toggle('collapsed');
+}
+
+function toggleItem(item) {
+  item.classList.toggle('expanded');
+}
+
+// --- Priority Picker ---
+function getPriorityItems() {
+  // Merge priorities from report + unfinished business
+  const items = [];
+  if (reportData.sections.priorities) {
+    reportData.sections.priorities.items.forEach(i => items.push(i.text));
+  }
+  if (reportData.sections.unfinished) {
+    reportData.sections.unfinished.items.forEach(i => items.push(i.text));
+  }
+  return [...new Set(items)];
+}
+
+function renderPriorities() {
+  const list = document.getElementById('priority-list');
+  const allItems = getPriorityItems();
+
+  // Merge with saved priorities
+  const saved = priorities.filter(p => allItems.includes(p.text));
+  const unsaved = allItems.filter(t => !saved.find(s => s.text === t));
+  const merged = [...saved, ...unsaved.map(t => ({ text: t, checked: false }))];
+
+  list.innerHTML = '';
+  merged.forEach((item, idx) => {
+    const li = document.createElement('li');
+    li.className = 'priority-item';
+    li.draggable = true;
+    li.dataset.index = idx;
+
+    const rankNum = item.checked ? (merged.filter((m, i) => m.checked && i <= idx).length) : '';
+    const rankClass = item.checked ? '' : 'unranked';
+
+    li.innerHTML = `
+      <span class="drag-handle" title="Drag to reorder">&#x2630;</span>
+      <div class="rank ${rankClass}">${rankNum || '-'}</div>
+      <input type="checkbox" ${item.checked ? 'checked' : ''} onchange="togglePriority(${idx})">
+      <label onclick="togglePriority(${idx})">${item.text}</label>
+    `;
+
+    // Drag events
+    li.addEventListener('dragstart', onDragStart);
+    li.addEventListener('dragover', onDragOver);
+    li.addEventListener('drop', onDrop);
+    li.addEventListener('dragend', onDragEnd);
+
+    list.appendChild(li);
+  });
+
+  // Update output
+  updatePriorityOutput(merged);
+}
+
+function togglePriority(idx) {
+  const allItems = getPriorityItems();
+  const saved = priorities.length ? priorities : allItems.map(t => ({ text: t, checked: false }));
+
+  if (saved[idx]) {
+    saved[idx].checked = !saved[idx].checked;
+  }
+
+  priorities = saved;
+  localStorage.setItem('data-dashboard-priorities', JSON.stringify(priorities));
+  renderPriorities();
+}
+
+function updatePriorityOutput(merged) {
+  const output = document.getElementById('priority-output');
+  const checked = merged.filter(m => m.checked);
+
+  if (checked.length === 0) {
+    output.classList.remove('visible');
+    return;
+  }
+
+  output.classList.add('visible');
+  output.textContent = "TODAY'S FOCUS\n" + checked.map((c, i) => `${i + 1}. ${c.text}`).join('\n');
+}
+
+// --- Drag & Drop ---
+let dragIdx = null;
+
+function onDragStart(e) {
+  dragIdx = parseInt(e.currentTarget.dataset.index);
+  e.currentTarget.classList.add('dragging');
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+}
+
+function onDrop(e) {
+  e.preventDefault();
+  const dropIdx = parseInt(e.currentTarget.dataset.index);
+  if (dragIdx === null || dragIdx === dropIdx) return;
+
+  const allItems = getPriorityItems();
+  const items = priorities.length ? [...priorities] : allItems.map(t => ({ text: t, checked: false }));
+
+  const [moved] = items.splice(dragIdx, 1);
+  items.splice(dropIdx, 0, moved);
+
+  priorities = items;
+  localStorage.setItem('data-dashboard-priorities', JSON.stringify(priorities));
+  renderPriorities();
+}
+
+function onDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  dragIdx = null;
+}
+
+// --- Init ---
+loadData();
+
+// Auto-refresh every 5 minutes
+setInterval(loadData, 300000);
+</script>
+</body>
+</html>
