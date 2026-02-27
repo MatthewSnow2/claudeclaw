@@ -1,0 +1,2239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ST Metro: The Dark Factory</title>
+
+    <!-- Fonts: Clash Display for headings, Satoshi for body -->
+    <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@400,500,700&display=swap">
+
+    <style>
+        /* ===========================================
+           CSS CUSTOM PROPERTIES (THEME)
+           Dark Factory: black base, electric blue/cyan accents, amber highlights
+           =========================================== */
+        :root {
+            /* Colors */
+            --bg-primary: #06080d;
+            --bg-secondary: #0c1018;
+            --bg-card: rgba(12, 20, 35, 0.85);
+            --text-primary: #e8edf5;
+            --text-secondary: #6b7a94;
+            --text-dim: #3d4a5e;
+            --accent: #00d4ff;
+            --accent-glow: rgba(0, 212, 255, 0.25);
+            --accent-bright: #40e0ff;
+            --highlight: #ff6b35;
+            --highlight-glow: rgba(255, 107, 53, 0.25);
+            --amber: #ffa726;
+            --success: #00e676;
+            --grid-color: rgba(0, 212, 255, 0.04);
+            --grid-color-bright: rgba(0, 212, 255, 0.08);
+
+            /* Typography - responsive with clamp() */
+            --font-display: 'Clash Display', sans-serif;
+            --font-body: 'Satoshi', sans-serif;
+            --title-size: clamp(2rem, 6vw, 5rem);
+            --h2-size: clamp(1.4rem, 3.5vw, 2.8rem);
+            --h3-size: clamp(1rem, 2.2vw, 1.5rem);
+            --subtitle-size: clamp(0.85rem, 1.8vw, 1.2rem);
+            --body-size: clamp(0.75rem, 1.3vw, 1rem);
+            --small-size: clamp(0.65rem, 1vw, 0.85rem);
+            --label-size: clamp(0.6rem, 0.9vw, 0.75rem);
+
+            /* Spacing */
+            --slide-padding: clamp(1.5rem, 4vw, 5rem);
+            --content-gap: clamp(0.8rem, 2vw, 2rem);
+            --element-gap: clamp(0.3rem, 1vw, 0.75rem);
+
+            /* Animation */
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+            --duration-normal: 0.7s;
+            --duration-slow: 1.2s;
+        }
+
+        /* ===========================================
+           BASE STYLES
+           =========================================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            scroll-snap-type: y mandatory;
+            height: 100%;
+            overflow-x: hidden;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            height: 100%;
+        }
+
+        /* ===========================================
+           SLIDE CONTAINER
+           Each slide = exact viewport height. No scrolling.
+           =========================================== */
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            padding: var(--slide-padding);
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slide-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            max-height: 100%;
+            max-width: min(90vw, 1100px);
+            overflow: hidden;
+            text-align: center;
+            z-index: 2;
+            position: relative;
+        }
+
+        /* ===========================================
+           GRID BACKGROUND (on every slide)
+           Subtle perspective grid for factory feel
+           =========================================== */
+        .slide::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(var(--grid-color) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+            background-size: clamp(30px, 5vw, 60px) clamp(30px, 5vw, 60px);
+            z-index: 0;
+            opacity: 0.6;
+        }
+
+        /* Corner accents for industrial feel */
+        .slide::after {
+            content: '';
+            position: absolute;
+            top: clamp(8px, 1.5vw, 20px);
+            left: clamp(8px, 1.5vw, 20px);
+            right: clamp(8px, 1.5vw, 20px);
+            bottom: clamp(8px, 1.5vw, 20px);
+            border: 1px solid rgba(0, 212, 255, 0.06);
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* ===========================================
+           TYPOGRAPHY
+           =========================================== */
+        h1 {
+            font-family: var(--font-display);
+            font-size: var(--title-size);
+            font-weight: 700;
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+        }
+
+        h2 {
+            font-family: var(--font-display);
+            font-size: var(--h2-size);
+            font-weight: 600;
+            line-height: 1.15;
+            letter-spacing: -0.01em;
+        }
+
+        h3 {
+            font-family: var(--font-display);
+            font-size: var(--h3-size);
+            font-weight: 500;
+            line-height: 1.2;
+        }
+
+        p, li {
+            font-size: var(--body-size);
+            line-height: 1.5;
+            color: var(--text-secondary);
+        }
+
+        .subtitle {
+            font-size: var(--subtitle-size);
+            color: var(--text-secondary);
+            font-weight: 400;
+            letter-spacing: 0.02em;
+        }
+
+        .label {
+            font-size: var(--label-size);
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .accent-text { color: var(--accent); }
+        .highlight-text { color: var(--highlight); }
+        .amber-text { color: var(--amber); }
+
+        /* ===========================================
+           CHAPTER BADGE (top-left on content slides)
+           =========================================== */
+        .chapter-badge {
+            position: absolute;
+            top: clamp(16px, 3vw, 32px);
+            left: clamp(16px, 3vw, 32px);
+            font-size: var(--label-size);
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: var(--accent);
+            opacity: 0.5;
+            z-index: 3;
+            font-family: var(--font-body);
+            font-weight: 600;
+        }
+
+        /* ===========================================
+           REVEAL ANIMATIONS
+           Elements start hidden, become visible when slide is active
+           =========================================== */
+        .reveal {
+            opacity: 0;
+            transform: translateY(25px);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .reveal-scale {
+            opacity: 0;
+            transform: scale(0.85);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .reveal-left {
+            opacity: 0;
+            transform: translateX(-40px);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .reveal-right {
+            opacity: 0;
+            transform: translateX(40px);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .slide.visible .reveal,
+        .slide.visible .reveal-scale,
+        .slide.visible .reveal-left,
+        .slide.visible .reveal-right {
+            opacity: 1;
+            transform: translate(0) scale(1);
+        }
+
+        /* Stagger delays */
+        .delay-1 { transition-delay: 0.1s; }
+        .delay-2 { transition-delay: 0.2s; }
+        .delay-3 { transition-delay: 0.3s; }
+        .delay-4 { transition-delay: 0.4s; }
+        .delay-5 { transition-delay: 0.5s; }
+        .delay-6 { transition-delay: 0.6s; }
+        .delay-7 { transition-delay: 0.7s; }
+        .delay-8 { transition-delay: 0.8s; }
+
+        /* ===========================================
+           PROGRESS BAR
+           =========================================== */
+        .progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent), var(--highlight));
+            z-index: 1000;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        /* ===========================================
+           NAV DOTS
+           =========================================== */
+        .nav-dots {
+            position: fixed;
+            right: clamp(10px, 2vw, 24px);
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .nav-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            padding: 0;
+        }
+
+        .nav-dot:hover {
+            background: var(--accent);
+            transform: scale(1.4);
+        }
+
+        .nav-dot.active {
+            background: var(--accent);
+            box-shadow: 0 0 8px var(--accent-glow);
+        }
+
+        .nav-dot.chapter-start {
+            width: 10px;
+            height: 10px;
+        }
+
+        /* ===========================================
+           KEYBOARD HINT
+           =========================================== */
+        .keyboard-hint {
+            position: fixed;
+            bottom: clamp(12px, 2vw, 24px);
+            right: clamp(12px, 2vw, 24px);
+            font-size: var(--small-size);
+            color: var(--text-dim);
+            z-index: 999;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        /* ===========================================
+           SLIDE COUNTER
+           =========================================== */
+        .slide-counter {
+            position: fixed;
+            bottom: clamp(12px, 2vw, 24px);
+            left: clamp(12px, 2vw, 24px);
+            font-size: var(--small-size);
+            color: var(--text-dim);
+            z-index: 999;
+            font-family: var(--font-body);
+            font-weight: 500;
+            letter-spacing: 0.1em;
+        }
+
+        /* ===========================================
+           COMPONENT: GLOW CARDS
+           Used for feature grids and info blocks
+           =========================================== */
+        .glow-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 212, 255, 0.1);
+            border-radius: 12px;
+            padding: clamp(0.8rem, 2vw, 1.5rem);
+            backdrop-filter: blur(10px);
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .glow-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .glow-card:hover {
+            border-color: rgba(0, 212, 255, 0.25);
+            box-shadow: 0 4px 30px rgba(0, 212, 255, 0.08);
+        }
+
+        .glow-card:hover::before { opacity: 1; }
+
+        .glow-card h3 {
+            font-size: var(--h3-size);
+            margin-bottom: var(--element-gap);
+        }
+
+        .glow-card p {
+            font-size: var(--small-size);
+        }
+
+        /* Highlight variant (amber) */
+        .glow-card.highlight-card {
+            border-color: rgba(255, 107, 53, 0.15);
+        }
+
+        .glow-card.highlight-card::before {
+            background: linear-gradient(90deg, transparent, var(--highlight), transparent);
+        }
+
+        .glow-card.highlight-card:hover {
+            border-color: rgba(255, 107, 53, 0.3);
+            box-shadow: 0 4px 30px rgba(255, 107, 53, 0.08);
+        }
+
+        /* ===========================================
+           COMPONENT: GRID LAYOUTS
+           =========================================== */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: clamp(0.5rem, 1.5vw, 1.2rem);
+            width: 100%;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: clamp(0.5rem, 1.5vw, 1.2rem);
+            width: 100%;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: clamp(0.5rem, 1.2vw, 1rem);
+            width: 100%;
+        }
+
+        @media (max-width: 768px) {
+            .grid-3 { grid-template-columns: repeat(2, 1fr); }
+            .grid-4 { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 500px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .grid-3 { grid-template-columns: 1fr; }
+            .grid-4 { grid-template-columns: 1fr; }
+        }
+
+        /* ===========================================
+           COMPONENT: ICON CIRCLES
+           SVG/emoji icons in glowing circles
+           =========================================== */
+        .icon-circle {
+            width: clamp(40px, 6vw, 64px);
+            height: clamp(40px, 6vw, 64px);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(18px, 3vw, 28px);
+            margin: 0 auto clamp(0.3rem, 0.8vw, 0.6rem);
+            position: relative;
+        }
+
+        .icon-circle.cyan {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.1);
+        }
+
+        .icon-circle.amber {
+            background: rgba(255, 167, 38, 0.1);
+            border: 1px solid rgba(255, 167, 38, 0.3);
+            box-shadow: 0 0 20px rgba(255, 167, 38, 0.1);
+        }
+
+        .icon-circle.orange {
+            background: rgba(255, 107, 53, 0.1);
+            border: 1px solid rgba(255, 107, 53, 0.3);
+            box-shadow: 0 0 20px rgba(255, 107, 53, 0.1);
+        }
+
+        .icon-circle.green {
+            background: rgba(0, 230, 118, 0.1);
+            border: 1px solid rgba(0, 230, 118, 0.3);
+            box-shadow: 0 0 20px rgba(0, 230, 118, 0.1);
+        }
+
+        /* ===========================================
+           COMPONENT: PULSE ANIMATION
+           For "live" indicators and active nodes
+           =========================================== */
+        @keyframes pulse-cyan {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(0, 212, 255, 0.4); }
+            50% { box-shadow: 0 0 0 12px rgba(0, 212, 255, 0); }
+        }
+
+        @keyframes pulse-amber {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 167, 38, 0.4); }
+            50% { box-shadow: 0 0 0 12px rgba(255, 167, 38, 0); }
+        }
+
+        @keyframes pulse-orange {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.4); }
+            50% { box-shadow: 0 0 0 12px rgba(255, 107, 53, 0); }
+        }
+
+        .pulse-cyan { animation: pulse-cyan 2s ease-in-out infinite; }
+        .pulse-amber { animation: pulse-amber 2s ease-in-out infinite 0.5s; }
+        .pulse-orange { animation: pulse-orange 2s ease-in-out infinite 1s; }
+
+        /* ===========================================
+           COMPONENT: FLOW ARROWS
+           Animated dashes for pipeline/flow visuals
+           =========================================== */
+        @keyframes dash-flow {
+            to { stroke-dashoffset: -20; }
+        }
+
+        .flow-arrow {
+            stroke: var(--accent);
+            stroke-width: 2;
+            fill: none;
+            stroke-dasharray: 8 6;
+            animation: dash-flow 0.8s linear infinite;
+        }
+
+        .flow-arrow.amber {
+            stroke: var(--amber);
+        }
+
+        .flow-arrow.highlight {
+            stroke: var(--highlight);
+        }
+
+        /* ===========================================
+           COMPONENT: CONVEYOR BELT
+           Animated assembly line for pipeline slide
+           =========================================== */
+        .conveyor {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            width: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .conveyor-stage {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: clamp(0.2rem, 0.5vw, 0.4rem);
+            position: relative;
+            padding: clamp(0.3rem, 0.8vw, 0.6rem);
+        }
+
+        .conveyor-stage .stage-dot {
+            width: clamp(10px, 1.5vw, 16px);
+            height: clamp(10px, 1.5vw, 16px);
+            border-radius: 50%;
+            background: var(--accent);
+            position: relative;
+            z-index: 2;
+        }
+
+        .conveyor-stage .stage-label {
+            font-size: var(--label-size);
+            color: var(--text-secondary);
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .conveyor-stage .stage-sublabel {
+            font-size: clamp(0.5rem, 0.7vw, 0.65rem);
+            color: var(--text-dim);
+            text-align: center;
+        }
+
+        .conveyor-line {
+            position: absolute;
+            top: calc(clamp(0.3rem, 0.8vw, 0.6rem) + clamp(5px, 0.75vw, 8px));
+            left: 10%;
+            right: 10%;
+            height: 2px;
+            z-index: 1;
+        }
+
+        /* HIL gate special style */
+        .conveyor-stage.hil-gate .stage-dot {
+            background: var(--highlight);
+            box-shadow: 0 0 12px rgba(255, 107, 53, 0.5);
+        }
+
+        .conveyor-stage.hil-gate .stage-label {
+            color: var(--highlight);
+            font-weight: 600;
+        }
+
+        /* ===========================================
+           COMPONENT: HUB AND SPOKE
+           For multi-agent architecture diagram
+           =========================================== */
+        .hub-spoke {
+            position: relative;
+            width: clamp(260px, 40vw, 420px);
+            height: clamp(260px, 40vw, 420px);
+            margin: 0 auto;
+        }
+
+        .hub-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: clamp(70px, 10vw, 100px);
+            height: clamp(70px, 10vw, 100px);
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0, 212, 255, 0.2), rgba(0, 212, 255, 0.05));
+            border: 2px solid var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-display);
+            font-size: var(--small-size);
+            font-weight: 600;
+            color: var(--accent);
+            text-align: center;
+            z-index: 3;
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.2);
+        }
+
+        .spoke-node {
+            position: absolute;
+            width: clamp(55px, 8vw, 80px);
+            height: clamp(55px, 8vw, 80px);
+            border-radius: 50%;
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(0.5rem, 0.8vw, 0.65rem);
+            color: var(--text-secondary);
+            text-align: center;
+            z-index: 3;
+            transition: all 0.3s ease;
+            gap: 2px;
+        }
+
+        .spoke-node .spoke-icon {
+            font-size: clamp(14px, 2vw, 20px);
+        }
+
+        .spoke-node:hover {
+            border-color: var(--accent);
+            box-shadow: 0 0 20px var(--accent-glow);
+            transform: scale(1.1);
+        }
+
+        /* Position spokes in a circle (6 nodes) */
+        .spoke-node:nth-child(2) { top: 2%; left: 50%; transform: translateX(-50%); }
+        .spoke-node:nth-child(3) { top: 20%; right: 2%; }
+        .spoke-node:nth-child(4) { bottom: 20%; right: 2%; }
+        .spoke-node:nth-child(5) { bottom: 2%; left: 50%; transform: translateX(-50%); }
+        .spoke-node:nth-child(6) { bottom: 20%; left: 2%; }
+        .spoke-node:nth-child(7) { top: 20%; left: 2%; }
+
+        .spoke-node:nth-child(2):hover, .spoke-node:nth-child(5):hover {
+            transform: translateX(-50%) scale(1.1);
+        }
+
+        /* ===========================================
+           COMPONENT: CYCLE DIAGRAM
+           Rotating feedback loop for Chapter 9
+           =========================================== */
+        .cycle-container {
+            position: relative;
+            width: clamp(280px, 45vw, 480px);
+            height: clamp(280px, 45vw, 480px);
+            margin: 0 auto;
+        }
+
+        .cycle-ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 2px dashed rgba(0, 212, 255, 0.15);
+        }
+
+        @keyframes rotate-slow {
+            to { transform: rotate(360deg); }
+        }
+
+        .cycle-ring.animated {
+            border: none;
+        }
+
+        .cycle-node {
+            position: absolute;
+            width: clamp(60px, 9vw, 90px);
+            height: clamp(60px, 9vw, 90px);
+            border-radius: 50%;
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(0.45rem, 0.75vw, 0.6rem);
+            color: var(--text-secondary);
+            text-align: center;
+            z-index: 3;
+            gap: 2px;
+            backdrop-filter: blur(5px);
+        }
+
+        .cycle-node .cycle-icon {
+            font-size: clamp(14px, 2.2vw, 22px);
+        }
+
+        /* Position 7 nodes around circle */
+        .cycle-node:nth-child(1) { top: 0%; left: 50%; transform: translateX(-50%); }
+        .cycle-node:nth-child(2) { top: 12%; right: 5%; }
+        .cycle-node:nth-child(3) { top: 55%; right: -2%; }
+        .cycle-node:nth-child(4) { bottom: 5%; right: 20%; }
+        .cycle-node:nth-child(5) { bottom: 5%; left: 20%; }
+        .cycle-node:nth-child(6) { top: 55%; left: -2%; }
+        .cycle-node:nth-child(7) { top: 12%; left: 5%; }
+
+        /* ===========================================
+           COMPONENT: LEVEL STEPS
+           For the 5-level framework
+           =========================================== */
+        .level-steps {
+            display: flex;
+            align-items: flex-end;
+            gap: clamp(0.3rem, 1vw, 0.8rem);
+            height: clamp(160px, 25vh, 280px);
+            width: 100%;
+            max-width: 700px;
+            justify-content: center;
+        }
+
+        .level-step {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: clamp(0.2rem, 0.4vw, 0.4rem);
+        }
+
+        .level-bar {
+            width: 100%;
+            border-radius: 6px 6px 0 0;
+            background: rgba(0, 212, 255, 0.08);
+            border: 1px solid rgba(0, 212, 255, 0.1);
+            border-bottom: none;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.5s var(--ease-out-expo);
+        }
+
+        .level-bar::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent);
+            opacity: 0.3;
+        }
+
+        .level-step:nth-child(1) .level-bar { height: 20%; }
+        .level-step:nth-child(2) .level-bar { height: 35%; }
+        .level-step:nth-child(3) .level-bar { height: 50%; }
+        .level-step:nth-child(4) .level-bar { height: 70%; }
+        .level-step:nth-child(5) .level-bar {
+            height: 100%;
+            background: linear-gradient(180deg, rgba(0, 212, 255, 0.2), rgba(0, 212, 255, 0.05));
+            border-color: var(--accent);
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.15);
+        }
+
+        .level-name {
+            font-size: var(--label-size);
+            color: var(--text-dim);
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .level-number {
+            font-family: var(--font-display);
+            font-size: var(--small-size);
+            font-weight: 600;
+            color: var(--text-dim);
+        }
+
+        .level-step:nth-child(5) .level-name {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .level-step:nth-child(5) .level-number {
+            color: var(--accent);
+        }
+
+        /* ===========================================
+           COMPONENT: FUNNEL
+           Narrowing funnel for filtering visual
+           =========================================== */
+        .funnel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0;
+            width: clamp(200px, 35vw, 400px);
+            margin: 0 auto;
+        }
+
+        .funnel-row {
+            height: clamp(28px, 4vh, 40px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: var(--small-size);
+            color: var(--text-secondary);
+            position: relative;
+            transition: all 0.5s var(--ease-out-expo);
+        }
+
+        .funnel-row:nth-child(1) {
+            width: 100%;
+            background: rgba(0, 212, 255, 0.08);
+            border: 1px solid rgba(0, 212, 255, 0.15);
+            border-radius: 8px 8px 0 0;
+        }
+
+        .funnel-row:nth-child(2) {
+            width: 80%;
+            background: rgba(0, 212, 255, 0.06);
+            border: 1px solid rgba(0, 212, 255, 0.1);
+            border-top: none;
+        }
+
+        .funnel-row:nth-child(3) {
+            width: 60%;
+            background: rgba(255, 167, 38, 0.06);
+            border: 1px solid rgba(255, 167, 38, 0.1);
+            border-top: none;
+        }
+
+        .funnel-row:nth-child(4) {
+            width: 40%;
+            background: rgba(255, 107, 53, 0.06);
+            border: 1px solid rgba(255, 107, 53, 0.1);
+            border-top: none;
+        }
+
+        .funnel-row:nth-child(5) {
+            width: 25%;
+            background: rgba(0, 230, 118, 0.08);
+            border: 1px solid rgba(0, 230, 118, 0.2);
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        /* ===========================================
+           COMPONENT: SIGNAL RADAR
+           Animated radar sweep for signal intelligence
+           =========================================== */
+        @keyframes radar-sweep {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes signal-ping {
+            0% { transform: scale(1); opacity: 0.8; }
+            100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        .radar {
+            width: clamp(80px, 12vw, 120px);
+            height: clamp(80px, 12vw, 120px);
+            border-radius: 50%;
+            position: relative;
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            background: rgba(0, 212, 255, 0.03);
+        }
+
+        .radar::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent), transparent);
+            transform-origin: left center;
+            animation: radar-sweep 3s linear infinite;
+        }
+
+        .radar::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            transform: translate(-50%, -50%);
+        }
+
+        .radar-ping {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 1px solid var(--accent);
+            transform: translate(-50%, -50%);
+            animation: signal-ping 2s ease-out infinite;
+        }
+
+        .radar-ping:nth-child(2) { animation-delay: 0.7s; }
+        .radar-ping:nth-child(3) { animation-delay: 1.4s; }
+
+        /* ===========================================
+           COMPONENT: PARALLEL TRACKS
+           For git worktree parallel execution
+           =========================================== */
+        .parallel-tracks {
+            display: flex;
+            flex-direction: column;
+            gap: clamp(0.5rem, 1vh, 0.8rem);
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .track {
+            display: flex;
+            align-items: center;
+            gap: clamp(0.3rem, 0.8vw, 0.6rem);
+            height: clamp(28px, 4vh, 40px);
+            position: relative;
+        }
+
+        .track-label {
+            font-size: var(--small-size);
+            color: var(--text-secondary);
+            width: clamp(60px, 10vw, 100px);
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .track-bar {
+            flex: 1;
+            height: 100%;
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.1);
+        }
+
+        @keyframes track-progress {
+            0% { width: 0; }
+            100% { width: 100%; }
+        }
+
+        .track-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            border-radius: 4px;
+            animation: track-progress 3s var(--ease-out-expo) forwards;
+            animation-play-state: paused;
+        }
+
+        .slide.visible .track-fill {
+            animation-play-state: running;
+        }
+
+        .track:nth-child(1) .track-fill {
+            background: linear-gradient(90deg, rgba(0, 212, 255, 0.3), rgba(0, 212, 255, 0.1));
+            animation-duration: 2.8s;
+        }
+
+        .track:nth-child(2) .track-fill {
+            background: linear-gradient(90deg, rgba(255, 167, 38, 0.3), rgba(255, 167, 38, 0.1));
+            animation-duration: 3.2s;
+            animation-delay: 0.2s;
+        }
+
+        .track:nth-child(3) .track-fill {
+            background: linear-gradient(90deg, rgba(0, 230, 118, 0.3), rgba(0, 230, 118, 0.1));
+            animation-duration: 2.5s;
+            animation-delay: 0.4s;
+        }
+
+        .track:nth-child(4) .track-fill {
+            background: linear-gradient(90deg, rgba(255, 107, 53, 0.3), rgba(255, 107, 53, 0.1));
+            animation-duration: 3s;
+            animation-delay: 0.3s;
+        }
+
+        /* ===========================================
+           COMPONENT: IMPROVEMENT CURVE
+           Upward trend line for Sky-Lynx
+           =========================================== */
+        @keyframes draw-line {
+            to { stroke-dashoffset: 0; }
+        }
+
+        .trend-line {
+            stroke-dasharray: 500;
+            stroke-dashoffset: 500;
+            transition: stroke-dashoffset 2s var(--ease-out-expo);
+        }
+
+        .slide.visible .trend-line {
+            stroke-dashoffset: 0;
+        }
+
+        /* ===========================================
+           COMPONENT: GLOW DIVIDER
+           =========================================== */
+        .glow-divider {
+            width: clamp(40px, 8vw, 80px);
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            margin: clamp(0.5rem, 1.5vw, 1.2rem) auto;
+        }
+
+        .glow-divider.amber {
+            background: linear-gradient(90deg, transparent, var(--amber), transparent);
+        }
+
+        /* ===========================================
+           SPECIAL SLIDES
+           =========================================== */
+
+        /* Title slide glow effect */
+        .title-slide {
+            background: radial-gradient(ellipse at 50% 60%, rgba(0, 212, 255, 0.08) 0%, transparent 60%),
+                        var(--bg-primary);
+        }
+
+        .title-slide h1 {
+            background: linear-gradient(135deg, var(--text-primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Chapter intro slides */
+        .chapter-intro {
+            background: radial-gradient(ellipse at 30% 50%, rgba(0, 212, 255, 0.05) 0%, transparent 50%),
+                        var(--bg-primary);
+        }
+
+        /* Final slide */
+        .final-slide {
+            background: radial-gradient(ellipse at 50% 50%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+                        radial-gradient(ellipse at 80% 80%, rgba(255, 107, 53, 0.05) 0%, transparent 40%),
+                        var(--bg-primary);
+        }
+
+        /* ===========================================
+           FACTORY SILHOUETTE (CSS-only)
+           =========================================== */
+        .factory-visual {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 0;
+            height: clamp(80px, 15vh, 160px);
+            width: clamp(200px, 40vw, 400px);
+            margin: 0 auto;
+            opacity: 0.15;
+        }
+
+        .factory-building {
+            background: var(--accent);
+            position: relative;
+        }
+
+        .factory-building:nth-child(1) {
+            width: 15%;
+            height: 60%;
+            border-radius: 2px 2px 0 0;
+        }
+
+        .factory-building:nth-child(2) {
+            width: 25%;
+            height: 80%;
+            border-radius: 2px 2px 0 0;
+        }
+
+        .factory-building:nth-child(3) {
+            width: 10%;
+            height: 100%;
+            border-radius: 2px 2px 0 0;
+        }
+
+        .factory-building:nth-child(4) {
+            width: 30%;
+            height: 50%;
+            border-radius: 2px 2px 0 0;
+        }
+
+        .factory-building:nth-child(5) {
+            width: 8%;
+            height: 90%;
+            border-radius: 2px 2px 0 0;
+        }
+
+        .factory-building:nth-child(6) {
+            width: 20%;
+            height: 65%;
+            border-radius: 2px 2px 0 0;
+        }
+
+        /* ===========================================
+           FLOWING SIGNALS ANIMATION
+           Dots flowing along a path
+           =========================================== */
+        @keyframes flow-dot {
+            0% { offset-distance: 0%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { offset-distance: 100%; opacity: 0; }
+        }
+
+        /* ===========================================
+           RESPONSIVE BREAKPOINTS
+           =========================================== */
+        @media (max-height: 700px) {
+            :root {
+                --slide-padding: clamp(1rem, 3vw, 2.5rem);
+                --content-gap: clamp(0.5rem, 1.5vw, 1rem);
+                --title-size: clamp(1.5rem, 5vw, 3.5rem);
+                --h2-size: clamp(1.2rem, 3vw, 2rem);
+            }
+        }
+
+        @media (max-height: 600px) {
+            :root {
+                --slide-padding: clamp(0.75rem, 2.5vw, 1.5rem);
+                --content-gap: clamp(0.4rem, 1vw, 0.75rem);
+                --title-size: clamp(1.25rem, 4.5vw, 2.5rem);
+                --h2-size: clamp(1rem, 2.5vw, 1.5rem);
+            }
+
+            .nav-dots, .keyboard-hint { display: none; }
+        }
+
+        @media (max-height: 500px) {
+            :root {
+                --slide-padding: clamp(0.5rem, 2vw, 1rem);
+                --title-size: clamp(1rem, 4vw, 1.8rem);
+                --h2-size: clamp(0.9rem, 2vw, 1.3rem);
+                --body-size: clamp(0.6rem, 1vw, 0.8rem);
+            }
+        }
+
+        @media (max-width: 600px) {
+            :root {
+                --title-size: clamp(1.5rem, 8vw, 3rem);
+            }
+
+            .hub-spoke {
+                width: clamp(220px, 70vw, 300px);
+                height: clamp(220px, 70vw, 300px);
+            }
+
+            .cycle-container {
+                width: clamp(240px, 75vw, 320px);
+                height: clamp(240px, 75vw, 320px);
+            }
+        }
+
+        /* ===========================================
+           REDUCED MOTION
+           =========================================== */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.2s !important;
+            }
+
+            html { scroll-behavior: auto; }
+
+            .radar::before { animation: none; }
+            .radar-ping { animation: none; display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Progress bar -->
+    <div class="progress-bar" id="progressBar"></div>
+
+    <!-- Navigation dots -->
+    <nav class="nav-dots" id="navDots"></nav>
+
+    <!-- Slide counter -->
+    <div class="slide-counter" id="slideCounter">01 / 23</div>
+
+    <!-- Keyboard hint -->
+    <div class="keyboard-hint">Arrow keys or scroll to navigate</div>
+
+    <!-- =========================================
+         SLIDE 1: TITLE
+         ========================================= -->
+    <section class="slide title-slide" data-chapter="0">
+        <div class="slide-content">
+            <p class="label reveal delay-1" style="margin-bottom: var(--element-gap);">Snow-Town Metro System</p>
+            <h1 class="reveal delay-2">The Dark Factory</h1>
+            <div class="glow-divider reveal delay-3"></div>
+            <p class="subtitle reveal delay-4">Where Software Builds Itself</p>
+            <div class="factory-visual reveal delay-5" style="margin-top: var(--content-gap);">
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 2: THE 5 LEVELS
+         Chapter 1: The Vision
+         ========================================= -->
+    <section class="slide" data-chapter="1">
+        <span class="chapter-badge">Chapter 1 -- The Vision</span>
+        <div class="slide-content">
+            <h2 class="reveal">The 5 Levels of AI Adoption</h2>
+            <p class="subtitle reveal delay-1" style="margin-bottom: var(--content-gap);">Dan Shapiro's framework for how organizations use AI</p>
+            <div class="level-steps reveal-scale delay-2">
+                <div class="level-step">
+                    <div class="level-bar"></div>
+                    <span class="level-number">L1</span>
+                    <span class="level-name">Assist</span>
+                </div>
+                <div class="level-step">
+                    <div class="level-bar"></div>
+                    <span class="level-number">L2</span>
+                    <span class="level-name">Copilot</span>
+                </div>
+                <div class="level-step">
+                    <div class="level-bar"></div>
+                    <span class="level-number">L3</span>
+                    <span class="level-name">Agent</span>
+                </div>
+                <div class="level-step">
+                    <div class="level-bar"></div>
+                    <span class="level-number">L4</span>
+                    <span class="level-name">Autonomous</span>
+                </div>
+                <div class="level-step">
+                    <div class="level-bar"></div>
+                    <span class="level-number">L5</span>
+                    <span class="level-name">Dark Factory</span>
+                </div>
+            </div>
+            <p class="reveal delay-3" style="margin-top: var(--content-gap); color: var(--accent); font-size: var(--subtitle-size);">
+                Level 5: Code not written by humans. Code not reviewed by humans.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 3: ST METRO MISSION
+         ========================================= -->
+    <section class="slide" data-chapter="1">
+        <span class="chapter-badge">Chapter 1 -- The Vision</span>
+        <div class="slide-content">
+            <h2 class="reveal">Closing Every Human Gate</h2>
+            <div class="glow-divider reveal delay-1"></div>
+            <p class="subtitle reveal delay-2" style="max-width: 600px; margin-bottom: var(--content-gap);">
+                ST Metro is a fully autonomous software production system. From market signal to deployed product, humans only intervene at critical decision points.
+            </p>
+            <div class="grid-3 reveal-scale delay-3" style="max-width: 700px;">
+                <div class="glow-card" style="text-align: center;">
+                    <div class="icon-circle cyan" style="margin-bottom: 0.3rem;">
+                        <span>&#x1F50D;</span>
+                    </div>
+                    <h3 style="font-size: var(--small-size);">Auto-Discover</h3>
+                    <p>AI agents find the opportunities</p>
+                </div>
+                <div class="glow-card" style="text-align: center;">
+                    <div class="icon-circle amber" style="margin-bottom: 0.3rem;">
+                        <span>&#x2699;</span>
+                    </div>
+                    <h3 style="font-size: var(--small-size);">Auto-Build</h3>
+                    <p>AI agents write and review the code</p>
+                </div>
+                <div class="glow-card" style="text-align: center;">
+                    <div class="icon-circle green" style="margin-bottom: 0.3rem;">
+                        <span>&#x1F504;</span>
+                    </div>
+                    <h3 style="font-size: var(--small-size);">Auto-Improve</h3>
+                    <p>AI agents optimize themselves</p>
+                </div>
+            </div>
+            <div class="factory-visual reveal delay-4" style="margin-top: var(--content-gap); opacity: 0.08;">
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 4: SIGNAL INTELLIGENCE - AGENTS
+         Chapter 2: Signal Intelligence
+         ========================================= -->
+    <section class="slide chapter-intro" data-chapter="2">
+        <span class="chapter-badge">Chapter 2 -- Signal Intelligence</span>
+        <div class="slide-content">
+            <h2 class="reveal">Three Eyes on the Market</h2>
+            <p class="subtitle reveal delay-1" style="margin-bottom: var(--content-gap);">
+                Three AI research agents run every day, each powered by a different LLM.
+                <br>Anti-monoculture: diverse models see different things.
+            </p>
+            <div class="grid-3 reveal-scale delay-2" style="max-width: 700px;">
+                <div class="glow-card" style="text-align: center;">
+                    <div class="radar pulse-cyan" style="margin: 0 auto clamp(0.3rem, 0.8vw, 0.6rem);">
+                        <div class="radar-ping"></div>
+                        <div class="radar-ping"></div>
+                        <div class="radar-ping"></div>
+                    </div>
+                    <h3 style="color: var(--accent);">Perplexity</h3>
+                    <p>Web research, citations, emerging trends</p>
+                </div>
+                <div class="glow-card" style="text-align: center;">
+                    <div class="radar pulse-amber" style="margin: 0 auto clamp(0.3rem, 0.8vw, 0.6rem); border-color: rgba(255, 167, 38, 0.2); background: rgba(255, 167, 38, 0.03);">
+                        <div class="radar-ping" style="border-color: var(--amber);"></div>
+                        <div class="radar-ping" style="border-color: var(--amber);"></div>
+                        <div class="radar-ping" style="border-color: var(--amber);"></div>
+                    </div>
+                    <h3 style="color: var(--amber);">Gemini</h3>
+                    <p>Google ecosystem, deep analysis, patterns</p>
+                </div>
+                <div class="glow-card" style="text-align: center;">
+                    <div class="radar pulse-orange" style="margin: 0 auto clamp(0.3rem, 0.8vw, 0.6rem); border-color: rgba(255, 107, 53, 0.2); background: rgba(255, 107, 53, 0.03);">
+                        <div class="radar-ping" style="border-color: var(--highlight);"></div>
+                        <div class="radar-ping" style="border-color: var(--highlight);"></div>
+                        <div class="radar-ping" style="border-color: var(--highlight);"></div>
+                    </div>
+                    <h3 style="color: var(--highlight);">ChatGPT</h3>
+                    <p>Broad coverage, competitive landscape</p>
+                </div>
+            </div>
+            <p class="reveal delay-3 label" style="margin-top: var(--content-gap); opacity: 0.5;">
+                Market trends &bull; Emerging tech &bull; Competitive moves &bull; User pain points
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 5: SIGNALS INTO IDEAFORGE
+         ========================================= -->
+    <section class="slide" data-chapter="2">
+        <span class="chapter-badge">Chapter 2 -- Signal Intelligence</span>
+        <div class="slide-content">
+            <h2 class="reveal">Signals Converge</h2>
+            <div class="glow-divider reveal delay-1"></div>
+            <!-- SVG flow diagram: 3 sources converging into IdeaForge -->
+            <svg class="reveal-scale delay-2" viewBox="0 0 600 260" style="width: min(90vw, 600px); height: auto; max-height: 40vh;">
+                <!-- Source nodes -->
+                <circle cx="100" cy="40" r="28" fill="rgba(0,212,255,0.1)" stroke="var(--accent)" stroke-width="1.5"/>
+                <text x="100" y="44" text-anchor="middle" fill="var(--accent)" font-size="10" font-family="Satoshi, sans-serif">Perplexity</text>
+
+                <circle cx="300" cy="40" r="28" fill="rgba(255,167,38,0.1)" stroke="var(--amber)" stroke-width="1.5"/>
+                <text x="300" y="44" text-anchor="middle" fill="var(--amber)" font-size="10" font-family="Satoshi, sans-serif">Gemini</text>
+
+                <circle cx="500" cy="40" r="28" fill="rgba(255,107,53,0.1)" stroke="var(--highlight)" stroke-width="1.5"/>
+                <text x="500" y="44" text-anchor="middle" fill="var(--highlight)" font-size="10" font-family="Satoshi, sans-serif">ChatGPT</text>
+
+                <!-- Flow lines -->
+                <path d="M100,68 Q100,140 300,170" class="flow-arrow" />
+                <path d="M300,68 L300,170" class="flow-arrow amber" />
+                <path d="M500,68 Q500,140 300,170" class="flow-arrow highlight" />
+
+                <!-- IdeaForge node -->
+                <rect x="220" y="170" width="160" height="60" rx="10" fill="rgba(0,212,255,0.08)" stroke="var(--accent)" stroke-width="2"/>
+                <text x="300" y="195" text-anchor="middle" fill="var(--accent)" font-size="14" font-weight="bold" font-family="Clash Display, sans-serif">IdeaForge</text>
+                <text x="300" y="215" text-anchor="middle" fill="var(--text-secondary)" font-size="9" font-family="Satoshi, sans-serif">Shared Signal Database</text>
+            </svg>
+            <p class="subtitle reveal delay-3" style="margin-top: var(--content-gap); max-width: 500px;">
+                All signals land in one place. A shared SQLite database where raw intelligence becomes structured knowledge.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 6: IDEA CAPTURE - CLAUDE DESKTOP
+         Chapter 3: Idea Capture
+         ========================================= -->
+    <section class="slide chapter-intro" data-chapter="3">
+        <span class="chapter-badge">Chapter 3 -- Idea Capture</span>
+        <div class="slide-content">
+            <h2 class="reveal">Human Ideas Welcome Too</h2>
+            <div class="glow-divider reveal delay-1"></div>
+            <p class="subtitle reveal delay-2" style="max-width: 550px; margin-bottom: var(--content-gap);">
+                Not everything comes from automated agents. Sometimes the best ideas come from conversation.
+            </p>
+            <!-- Chat bubble visual -->
+            <div class="reveal-scale delay-3" style="display: flex; align-items: center; gap: clamp(1rem, 3vw, 2rem); max-width: 600px;">
+                <div class="glow-card" style="flex: 1; text-align: left; border-color: rgba(255, 167, 38, 0.2);">
+                    <p style="font-size: var(--small-size); color: var(--amber); margin-bottom: 0.3rem; font-weight: 600;">Matthew via Claude Desktop</p>
+                    <p style="font-style: italic; color: var(--text-primary); font-size: var(--body-size);">"I just saw a gap in the market for AI-powered proposal generators. Capture that."</p>
+                </div>
+                <svg viewBox="0 0 60 40" style="width: clamp(40px, 6vw, 60px); height: auto; flex-shrink: 0;">
+                    <path d="M5,20 L55,20" class="flow-arrow amber" stroke-width="2"/>
+                    <polygon points="55,15 55,25 60,20" fill="var(--amber)" opacity="0.6"/>
+                </svg>
+                <div style="flex-shrink: 0; text-align: center;">
+                    <div class="icon-circle cyan pulse-cyan">
+                        <span style="font-size: clamp(16px, 2.5vw, 24px);">&#x1F4BE;</span>
+                    </div>
+                    <p style="font-size: var(--label-size); color: var(--accent); margin-top: 0.2rem;">IdeaForge</p>
+                </div>
+            </div>
+            <p class="reveal delay-4 subtitle" style="margin-top: var(--content-gap); opacity: 0.6;">
+                The idea-catcher MCP tool lets Matthew capture ideas conversationally, anytime, from Claude Desktop.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 7: IDEAFORGE - THE BRAIN
+         ========================================= -->
+    <section class="slide" data-chapter="3">
+        <span class="chapter-badge">Chapter 3 -- Idea Capture</span>
+        <div class="slide-content">
+            <h2 class="reveal">IdeaForge: The Intelligence Hub</h2>
+            <div class="glow-divider reveal delay-1"></div>
+            <p class="subtitle reveal delay-2" style="margin-bottom: var(--content-gap); max-width: 500px;">
+                Every signal and idea flows here. IdeaForge scores, classifies, and normalizes everything into a unified format.
+            </p>
+            <div class="funnel reveal-scale delay-3">
+                <div class="funnel-row">Raw signals from 3 LLM agents</div>
+                <div class="funnel-row">Human ideas from Claude Desktop</div>
+                <div class="funnel-row">Scored &amp; classified</div>
+                <div class="funnel-row">Normalized &amp; ranked</div>
+                <div class="funnel-row">Ready for pipeline</div>
+            </div>
+            <p class="reveal delay-4" style="margin-top: var(--content-gap); font-size: var(--small-size); color: var(--text-dim);">
+                Only structured, scored ideas move forward into the build pipeline.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 8: ULTRA-MAGNUS TITLE
+         Chapter 4: The Pipeline
+         ========================================= -->
+    <section class="slide chapter-intro" data-chapter="4">
+        <span class="chapter-badge">Chapter 4 -- The Pipeline</span>
+        <div class="slide-content">
+            <div class="icon-circle cyan reveal" style="width: clamp(60px, 8vw, 90px); height: clamp(60px, 8vw, 90px); font-size: clamp(28px, 4vw, 42px); margin-bottom: var(--content-gap);">
+                <span>&#x1F3ED;</span>
+            </div>
+            <p class="label reveal delay-1">Ultra-Magnus</p>
+            <h2 class="reveal delay-2" style="margin-top: var(--element-gap);">The Idea-to-Product Pipeline</h2>
+            <div class="glow-divider reveal delay-3"></div>
+            <p class="subtitle reveal delay-4" style="max-width: 500px;">
+                From a scored idea in IdeaForge to a deployed product on the internet. Fully automated. Human gates only where they matter.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 9: PIPELINE STAGES
+         ========================================= -->
+    <section class="slide" data-chapter="4">
+        <span class="chapter-badge">Chapter 4 -- The Pipeline</span>
+        <div class="slide-content">
+            <h2 class="reveal" style="font-size: var(--h3-size); margin-bottom: var(--content-gap);">The Assembly Line</h2>
+            <div class="conveyor reveal-scale delay-1" style="position: relative; max-width: 900px;">
+                <!-- SVG connecting line -->
+                <svg style="position: absolute; top: calc(clamp(0.3rem, 0.8vw, 0.6rem) + clamp(5px, 0.75vw, 8px) - 1px); left: 7%; right: 7%; height: 4px; width: 86%; z-index: 1;">
+                    <line x1="0" y1="2" x2="100%" y2="2" class="flow-arrow" stroke-width="2"/>
+                </svg>
+                <div class="conveyor-stage">
+                    <div class="stage-dot"></div>
+                    <span class="stage-label">Capture</span>
+                    <span class="stage-sublabel">IdeaForge</span>
+                </div>
+                <div class="conveyor-stage">
+                    <div class="stage-dot" style="background: var(--amber);"></div>
+                    <span class="stage-label" style="color: var(--amber);">Enrich</span>
+                    <span class="stage-sublabel">Gemini</span>
+                </div>
+                <div class="conveyor-stage">
+                    <div class="stage-dot"></div>
+                    <span class="stage-label">Evaluate</span>
+                    <span class="stage-sublabel">Jobs-to-be-Done</span>
+                </div>
+                <div class="conveyor-stage hil-gate">
+                    <div class="stage-dot"></div>
+                    <span class="stage-label">HIL Gate</span>
+                    <span class="stage-sublabel">Matthew reviews</span>
+                </div>
+                <div class="conveyor-stage">
+                    <div class="stage-dot"></div>
+                    <span class="stage-label">Scaffold</span>
+                    <span class="stage-sublabel">Claude</span>
+                </div>
+                <div class="conveyor-stage">
+                    <div class="stage-dot"></div>
+                    <span class="stage-label">Build</span>
+                    <span class="stage-sublabel">Claude</span>
+                </div>
+                <div class="conveyor-stage">
+                    <div class="stage-dot" style="background: var(--success);"></div>
+                    <span class="stage-label" style="color: var(--success);">Deploy</span>
+                    <span class="stage-sublabel">GitHub / Vercel</span>
+                </div>
+            </div>
+            <div class="reveal delay-2" style="margin-top: var(--content-gap); display: flex; gap: clamp(0.8rem, 2vw, 1.5rem); align-items: center; justify-content: center; flex-wrap: wrap;">
+                <span style="display: flex; align-items: center; gap: 0.3rem; font-size: var(--small-size); color: var(--text-dim);">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block;"></span> AI stage
+                </span>
+                <span style="display: flex; align-items: center; gap: 0.3rem; font-size: var(--small-size); color: var(--text-dim);">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--highlight); display: inline-block;"></span> Human review
+                </span>
+                <span style="display: flex; align-items: center; gap: 0.3rem; font-size: var(--small-size); color: var(--text-dim);">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--success); display: inline-block;"></span> Live product
+                </span>
+            </div>
+            <p class="reveal delay-3 subtitle" style="margin-top: var(--element-gap);">
+                HIL (Human-in-the-Loop) gates pause the pipeline at critical decision points.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 10: ONLY THE BEST
+         ========================================= -->
+    <section class="slide" data-chapter="4">
+        <span class="chapter-badge">Chapter 4 -- The Pipeline</span>
+        <div class="slide-content">
+            <h2 class="reveal">Only the Best Ideas Survive</h2>
+            <div class="glow-divider reveal delay-1"></div>
+            <!-- Wide funnel visualization -->
+            <div style="display: flex; align-items: center; gap: clamp(1rem, 3vw, 2rem); margin: var(--content-gap) 0;" class="reveal-scale delay-2">
+                <div style="text-align: center;">
+                    <div style="font-size: clamp(2rem, 5vw, 4rem); font-family: var(--font-display); font-weight: 700; color: var(--accent);">100+</div>
+                    <p style="font-size: var(--small-size); color: var(--text-dim);">signals per week</p>
+                </div>
+                <svg viewBox="0 0 200 80" style="width: clamp(120px, 20vw, 200px); height: auto;">
+                    <polygon points="0,0 200,25 200,55 0,80" fill="rgba(0,212,255,0.05)" stroke="rgba(0,212,255,0.15)" stroke-width="1"/>
+                    <path d="M10,40 L190,40" class="flow-arrow" stroke-width="2"/>
+                </svg>
+                <div style="text-align: center;">
+                    <div style="font-size: clamp(2rem, 5vw, 4rem); font-family: var(--font-display); font-weight: 700; color: var(--success);">3-5</div>
+                    <p style="font-size: var(--small-size); color: var(--text-dim);">products shipped</p>
+                </div>
+            </div>
+            <p class="subtitle reveal delay-3" style="max-width: 500px;">
+                Enrichment, evaluation, and human review filter aggressively. Resources only go to ideas with real market potential.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 11: YCE HARNESS TITLE
+         Chapter 5: The Builder
+         ========================================= -->
+    <section class="slide chapter-intro" data-chapter="5">
+        <span class="chapter-badge">Chapter 5 -- The Builder</span>
+        <div class="slide-content">
+            <div class="icon-circle amber reveal" style="width: clamp(60px, 8vw, 90px); height: clamp(60px, 8vw, 90px); font-size: clamp(28px, 4vw, 42px); margin-bottom: var(--content-gap);">
+                <span>&#x1F916;</span>
+            </div>
+            <p class="label reveal delay-1" style="color: var(--amber);">YCE Harness</p>
+            <h2 class="reveal delay-2" style="margin-top: var(--element-gap);">Your Claude Engineer</h2>
+            <div class="glow-divider amber reveal delay-3"></div>
+            <p class="subtitle reveal delay-4" style="max-width: 500px;">
+                An autonomous AI software engineer. It reads the spec, writes the code, tests it, reviews it, and ships it.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 12: MULTI-AGENT ARCHITECTURE
+         ========================================= -->
+    <section class="slide" data-chapter="5">
+        <span class="chapter-badge">Chapter 5 -- The Builder</span>
+        <div class="slide-content">
+            <h2 class="reveal" style="font-size: var(--h3-size); margin-bottom: var(--content-gap);">Multi-Agent Architecture</h2>
+            <div class="hub-spoke reveal-scale delay-1">
+                <!-- SVG spokes (drawn behind) -->
+                <svg style="position: absolute; inset: 0; z-index: 2;" viewBox="0 0 420 420">
+                    <!-- Lines from center to each spoke -->
+                    <line x1="210" y1="210" x2="210" y2="50" stroke="rgba(0,212,255,0.15)" stroke-width="1" stroke-dasharray="4 4"/>
+                    <line x1="210" y1="210" x2="370" y2="120" stroke="rgba(0,212,255,0.15)" stroke-width="1" stroke-dasharray="4 4"/>
+                    <line x1="210" y1="210" x2="370" y2="300" stroke="rgba(0,212,255,0.15)" stroke-width="1" stroke-dasharray="4 4"/>
+                    <line x1="210" y1="210" x2="210" y2="370" stroke="rgba(0,212,255,0.15)" stroke-width="1" stroke-dasharray="4 4"/>
+                    <line x1="210" y1="210" x2="50" y2="300" stroke="rgba(0,212,255,0.15)" stroke-width="1" stroke-dasharray="4 4"/>
+                    <line x1="210" y1="210" x2="50" y2="120" stroke="rgba(0,212,255,0.15)" stroke-width="1" stroke-dasharray="4 4"/>
+                </svg>
+
+                <!-- Center hub -->
+                <div class="hub-center">Orchestrator<br><span style="font-size: 0.7em; opacity: 0.6;">(Haiku)</span></div>
+
+                <!-- Spoke nodes -->
+                <div class="spoke-node">
+                    <span class="spoke-icon">&#x1F4BB;</span>
+                    <span>Coding</span>
+                </div>
+                <div class="spoke-node">
+                    <span class="spoke-icon">&#x1F9EA;</span>
+                    <span>QA</span>
+                </div>
+                <div class="spoke-node">
+                    <span class="spoke-icon">&#x1F50D;</span>
+                    <span>Review</span>
+                </div>
+                <div class="spoke-node">
+                    <span class="spoke-icon">&#x1F4E6;</span>
+                    <span>GitHub</span>
+                </div>
+                <div class="spoke-node">
+                    <span class="spoke-icon">&#x1F4CB;</span>
+                    <span>Linear</span>
+                </div>
+                <div class="spoke-node">
+                    <span class="spoke-icon">&#x1F4AC;</span>
+                    <span>Slack</span>
+                </div>
+            </div>
+            <p class="reveal delay-2 subtitle" style="margin-top: var(--element-gap);">
+                A fast orchestrator (Haiku) directs specialized agents (Sonnet) for each task.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 13: PARALLEL EXECUTION
+         ========================================= -->
+    <section class="slide" data-chapter="5">
+        <span class="chapter-badge">Chapter 5 -- The Builder</span>
+        <div class="slide-content">
+            <h2 class="reveal">Parallel Execution</h2>
+            <p class="subtitle reveal delay-1" style="margin-bottom: var(--content-gap); max-width: 500px;">
+                Multiple agents build simultaneously using git worktrees. Independent features are built in parallel, then merged.
+            </p>
+            <div class="parallel-tracks reveal-scale delay-2">
+                <div class="track">
+                    <span class="track-label" style="color: var(--accent);">Worker 1</span>
+                    <div class="track-bar">
+                        <div class="track-fill"></div>
+                    </div>
+                    <span style="font-size: var(--label-size); color: var(--text-dim); width: clamp(50px, 10vw, 90px);">Auth module</span>
+                </div>
+                <div class="track">
+                    <span class="track-label" style="color: var(--amber);">Worker 2</span>
+                    <div class="track-bar">
+                        <div class="track-fill"></div>
+                    </div>
+                    <span style="font-size: var(--label-size); color: var(--text-dim); width: clamp(50px, 10vw, 90px);">API routes</span>
+                </div>
+                <div class="track">
+                    <span class="track-label" style="color: var(--success);">Worker 3</span>
+                    <div class="track-bar">
+                        <div class="track-fill"></div>
+                    </div>
+                    <span style="font-size: var(--label-size); color: var(--text-dim); width: clamp(50px, 10vw, 90px);">Frontend UI</span>
+                </div>
+                <div class="track">
+                    <span class="track-label" style="color: var(--highlight);">Worker 4</span>
+                    <div class="track-bar">
+                        <div class="track-fill"></div>
+                    </div>
+                    <span style="font-size: var(--label-size); color: var(--text-dim); width: clamp(50px, 10vw, 90px);">Test suite</span>
+                </div>
+            </div>
+            <p class="reveal delay-3" style="margin-top: var(--content-gap); font-size: var(--small-size); color: var(--text-dim);">
+                Git worktrees allow isolated branches. Each worker operates independently, then results merge cleanly.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 14: ST FACTORY - OVERVIEW
+         Chapter 6: The Factory Floor
+         ========================================= -->
+    <section class="slide chapter-intro" data-chapter="6">
+        <span class="chapter-badge">Chapter 6 -- The Factory Floor</span>
+        <div class="slide-content">
+            <div class="icon-circle orange reveal" style="width: clamp(60px, 8vw, 90px); height: clamp(60px, 8vw, 90px); font-size: clamp(28px, 4vw, 42px); margin-bottom: var(--content-gap);">
+                <span>&#x1F4CA;</span>
+            </div>
+            <p class="label reveal delay-1" style="color: var(--highlight);">ST Factory</p>
+            <h2 class="reveal delay-2" style="margin-top: var(--element-gap);">The Factory Floor</h2>
+            <div class="glow-divider reveal delay-3" style="background: linear-gradient(90deg, transparent, var(--highlight), transparent);"></div>
+            <p class="subtitle reveal delay-4" style="max-width: 500px;">
+                Every build, every outcome, every metric is tracked. The factory knows what works and what does not.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 15: THREE PILLARS
+         ========================================= -->
+    <section class="slide" data-chapter="6">
+        <span class="chapter-badge">Chapter 6 -- The Factory Floor</span>
+        <div class="slide-content">
+            <h2 class="reveal" style="font-size: var(--h3-size); margin-bottom: var(--content-gap);">Three Pillars of the Factory</h2>
+            <div class="grid-3 reveal-scale delay-1" style="max-width: 750px;">
+                <div class="glow-card highlight-card" style="text-align: center;">
+                    <div class="icon-circle orange" style="margin-bottom: 0.4rem;">
+                        <span>&#x1F4C8;</span>
+                    </div>
+                    <h3 style="color: var(--highlight); font-size: var(--body-size);">Persona Metrics</h3>
+                    <p>How well each AI agent persona performs. Success rates, failure modes, efficiency scores.</p>
+                </div>
+                <div class="glow-card highlight-card" style="text-align: center;">
+                    <div class="icon-circle orange" style="margin-bottom: 0.4rem;">
+                        <span>&#x1F4DC;</span>
+                    </div>
+                    <h3 style="color: var(--highlight); font-size: var(--body-size);">Contract Store</h3>
+                    <p>Standardized data contracts between components. Everyone speaks the same language.</p>
+                </div>
+                <div class="glow-card highlight-card" style="text-align: center;">
+                    <div class="icon-circle orange" style="margin-bottom: 0.4rem;">
+                        <span>&#x1F527;</span>
+                    </div>
+                    <h3 style="color: var(--highlight); font-size: var(--body-size);">Patch Management</h3>
+                    <p>Proposed improvements to agent personas. Tested and approved before deployment.</p>
+                </div>
+            </div>
+            <p class="reveal delay-2 subtitle" style="margin-top: var(--content-gap); max-width: 500px;">
+                The factory floor is where raw build data becomes institutional knowledge.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 16: SKY-LYNX - THE OBSERVER
+         Chapter 7: The Observer
+         ========================================= -->
+    <section class="slide chapter-intro" data-chapter="7">
+        <span class="chapter-badge">Chapter 7 -- The Observer</span>
+        <div class="slide-content">
+            <h2 class="reveal">Sky-Lynx: The Observer</h2>
+            <div class="glow-divider reveal delay-1"></div>
+            <p class="subtitle reveal delay-2" style="max-width: 500px; margin-bottom: var(--content-gap);">
+                A weekly analysis agent that reads from every system in the ecosystem. It sees what humans miss.
+            </p>
+            <!-- Observer connected to systems -->
+            <svg class="reveal-scale delay-3" viewBox="0 0 500 200" style="width: min(85vw, 500px); height: auto; max-height: 30vh;">
+                <!-- System nodes -->
+                <rect x="10" y="10" width="90" height="35" rx="6" fill="rgba(0,212,255,0.06)" stroke="rgba(0,212,255,0.2)" stroke-width="1"/>
+                <text x="55" y="32" text-anchor="middle" fill="var(--text-secondary)" font-size="8" font-family="Satoshi, sans-serif">IdeaForge</text>
+
+                <rect x="10" y="60" width="90" height="35" rx="6" fill="rgba(255,107,53,0.06)" stroke="rgba(255,107,53,0.2)" stroke-width="1"/>
+                <text x="55" y="82" text-anchor="middle" fill="var(--text-secondary)" font-size="8" font-family="Satoshi, sans-serif">ST Factory</text>
+
+                <rect x="10" y="110" width="90" height="35" rx="6" fill="rgba(255,167,38,0.06)" stroke="rgba(255,167,38,0.2)" stroke-width="1"/>
+                <text x="55" y="132" text-anchor="middle" fill="var(--text-secondary)" font-size="8" font-family="Satoshi, sans-serif">Usage Data</text>
+
+                <rect x="10" y="160" width="90" height="35" rx="6" fill="rgba(0,230,118,0.06)" stroke="rgba(0,230,118,0.2)" stroke-width="1"/>
+                <text x="55" y="182" text-anchor="middle" fill="var(--text-secondary)" font-size="8" font-family="Satoshi, sans-serif">Build Logs</text>
+
+                <!-- Connection lines -->
+                <path d="M100,27 L210,100" stroke="rgba(0,212,255,0.2)" stroke-width="1" stroke-dasharray="4 4"/>
+                <path d="M100,77 L210,100" stroke="rgba(255,107,53,0.2)" stroke-width="1" stroke-dasharray="4 4"/>
+                <path d="M100,127 L210,100" stroke="rgba(255,167,38,0.2)" stroke-width="1" stroke-dasharray="4 4"/>
+                <path d="M100,177 L210,100" stroke="rgba(0,230,118,0.2)" stroke-width="1" stroke-dasharray="4 4"/>
+
+                <!-- Sky-Lynx observer -->
+                <circle cx="250" cy="100" r="40" fill="rgba(0,212,255,0.08)" stroke="var(--accent)" stroke-width="2"/>
+                <text x="250" y="95" text-anchor="middle" fill="var(--accent)" font-size="22">&#x1F441;</text>
+                <text x="250" y="115" text-anchor="middle" fill="var(--accent)" font-size="9" font-weight="bold" font-family="Clash Display, sans-serif">Sky-Lynx</text>
+
+                <!-- Output arrow -->
+                <path d="M290,100 L380,100" class="flow-arrow" stroke-width="2"/>
+
+                <!-- Output -->
+                <rect x="380" y="75" width="110" height="50" rx="8" fill="rgba(0,230,118,0.06)" stroke="rgba(0,230,118,0.3)" stroke-width="1.5"/>
+                <text x="435" y="97" text-anchor="middle" fill="var(--success)" font-size="9" font-weight="bold" font-family="Clash Display, sans-serif">Improvements</text>
+                <text x="435" y="112" text-anchor="middle" fill="var(--text-dim)" font-size="7" font-family="Satoshi, sans-serif">Draft PRs</text>
+            </svg>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 17: GETTING SMARTER
+         ========================================= -->
+    <section class="slide" data-chapter="7">
+        <span class="chapter-badge">Chapter 7 -- The Observer</span>
+        <div class="slide-content">
+            <h2 class="reveal">Getting Smarter Every Week</h2>
+            <div class="glow-divider reveal delay-1"></div>
+            <p class="subtitle reveal delay-2" style="max-width: 550px; margin-bottom: var(--content-gap);">
+                Sky-Lynx creates draft PRs that update CLAUDE.md files. These files are the instructions that drive every agent. Better instructions = better agents.
+            </p>
+            <!-- Improvement curve SVG -->
+            <svg class="reveal-scale delay-3" viewBox="0 0 400 180" style="width: min(80vw, 400px); height: auto; max-height: 25vh;">
+                <!-- Grid -->
+                <line x1="50" y1="150" x2="370" y2="150" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+                <line x1="50" y1="110" x2="370" y2="110" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+                <line x1="50" y1="70" x2="370" y2="70" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+                <line x1="50" y1="30" x2="370" y2="30" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+
+                <!-- Axis labels -->
+                <text x="210" y="172" text-anchor="middle" fill="var(--text-dim)" font-size="8" font-family="Satoshi, sans-serif">Time (weeks)</text>
+                <text x="25" y="90" text-anchor="middle" fill="var(--text-dim)" font-size="8" font-family="Satoshi, sans-serif" transform="rotate(-90, 25, 90)">Performance</text>
+
+                <!-- Improvement curve -->
+                <path d="M50,140 C100,138 130,130 170,110 S250,65 320,35 L370,20"
+                      fill="none" stroke="var(--accent)" stroke-width="2.5"
+                      class="trend-line" stroke-linecap="round"/>
+
+                <!-- Glow under curve -->
+                <path d="M50,140 C100,138 130,130 170,110 S250,65 320,35 L370,20 L370,150 L50,150 Z"
+                      fill="url(#curveGlow)" opacity="0.3"/>
+                <defs>
+                    <linearGradient id="curveGlow" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3"/>
+                        <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+                    </linearGradient>
+                </defs>
+
+                <!-- Week markers -->
+                <circle cx="100" cy="136" r="3" fill="var(--accent)" opacity="0.5"/>
+                <circle cx="170" cy="110" r="3" fill="var(--accent)" opacity="0.6"/>
+                <circle cx="250" cy="65" r="3" fill="var(--accent)" opacity="0.7"/>
+                <circle cx="320" cy="35" r="3" fill="var(--accent)" opacity="0.8"/>
+                <circle cx="370" cy="20" r="4" fill="var(--accent)"/>
+            </svg>
+            <p class="reveal delay-4" style="font-size: var(--small-size); color: var(--accent); margin-top: var(--element-gap);">
+                Each cycle: observe, analyze, recommend, improve, repeat.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 18: METROPLEX - THE BRAIN
+         Chapter 8: The Brain
+         ========================================= -->
+    <section class="slide chapter-intro" data-chapter="8">
+        <span class="chapter-badge">Chapter 8 -- The Brain</span>
+        <div class="slide-content">
+            <div class="icon-circle cyan reveal" style="width: clamp(70px, 10vw, 100px); height: clamp(70px, 10vw, 100px); font-size: clamp(32px, 5vw, 48px); margin-bottom: var(--content-gap); box-shadow: 0 0 40px rgba(0, 212, 255, 0.2);">
+                <span>&#x1F9E0;</span>
+            </div>
+            <p class="label reveal delay-1">Metroplex</p>
+            <h2 class="reveal delay-2" style="margin-top: var(--element-gap);">The Level 5 Brain</h2>
+            <div class="glow-divider reveal delay-3"></div>
+            <p class="subtitle reveal delay-4" style="max-width: 500px;">
+                The autonomy layer that orchestrates everything. Metroplex is the conductor that turns the entire ecosystem into a self-running production line.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 19: METROPLEX CAPABILITIES
+         ========================================= -->
+    <section class="slide" data-chapter="8">
+        <span class="chapter-badge">Chapter 8 -- The Brain</span>
+        <div class="slide-content">
+            <h2 class="reveal" style="font-size: var(--h3-size); margin-bottom: var(--content-gap);">Self-Correcting. No Human Required.</h2>
+            <div class="grid-2 reveal-scale delay-1" style="max-width: 650px;">
+                <div class="glow-card" style="text-align: center;">
+                    <div class="icon-circle cyan" style="margin-bottom: 0.3rem;">
+                        <span>&#x1F6A6;</span>
+                    </div>
+                    <h3 style="color: var(--accent); font-size: var(--body-size);">Triage Gate</h3>
+                    <p>Auto-evaluates new ideas from IdeaForge. Decides what gets built next.</p>
+                </div>
+                <div class="glow-card" style="text-align: center;">
+                    <div class="icon-circle amber" style="margin-bottom: 0.3rem;">
+                        <span>&#x1F4DD;</span>
+                    </div>
+                    <h3 style="color: var(--amber); font-size: var(--body-size);">Spec Generator</h3>
+                    <p>Creates full project specifications from scored ideas. Ready for builders.</p>
+                </div>
+                <div class="glow-card" style="text-align: center;">
+                    <div class="icon-circle orange" style="margin-bottom: 0.3rem;">
+                        <span>&#x1F680;</span>
+                    </div>
+                    <h3 style="color: var(--highlight); font-size: var(--body-size);">Build Orchestrator</h3>
+                    <p>Dispatches work to YCE Harness. Manages parallel builds and dependencies.</p>
+                </div>
+                <div class="glow-card" style="text-align: center;">
+                    <div class="icon-circle green" style="margin-bottom: 0.3rem;">
+                        <span>&#x1FA79;</span>
+                    </div>
+                    <h3 style="color: var(--success); font-size: var(--body-size);">Patcher</h3>
+                    <p>Applies approved persona improvements. The system upgrades its own agents.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 20: THE FULL LOOP
+         Chapter 9: The Loop
+         ========================================= -->
+    <section class="slide chapter-intro" data-chapter="9">
+        <span class="chapter-badge">Chapter 9 -- The Loop</span>
+        <div class="slide-content">
+            <h2 class="reveal" style="font-size: var(--h3-size); margin-bottom: var(--content-gap);">The Full Cycle</h2>
+            <div class="cycle-container reveal-scale delay-1">
+                <!-- Dashed ring -->
+                <div class="cycle-ring"></div>
+
+                <!-- Animated rotating ring -->
+                <svg style="position: absolute; inset: -5%; width: 110%; height: 110%; z-index: 1;" viewBox="0 0 500 500">
+                    <circle cx="250" cy="250" r="220" fill="none" stroke="rgba(0,212,255,0.08)" stroke-width="1.5" stroke-dasharray="12 8" style="animation: rotate-slow 30s linear infinite; transform-origin: center;"/>
+                </svg>
+
+                <!-- Cycle nodes -->
+                <div class="cycle-node" style="border-color: rgba(0,212,255,0.3);">
+                    <span class="cycle-icon">&#x1F4E1;</span>
+                    <span style="color: var(--accent);">Signals</span>
+                </div>
+                <div class="cycle-node" style="border-color: rgba(0,212,255,0.3);">
+                    <span class="cycle-icon">&#x1F4A1;</span>
+                    <span>IdeaForge</span>
+                </div>
+                <div class="cycle-node" style="border-color: rgba(255,167,38,0.3);">
+                    <span class="cycle-icon">&#x1F3ED;</span>
+                    <span style="color: var(--amber);">Ultra-Magnus</span>
+                </div>
+                <div class="cycle-node" style="border-color: rgba(255,107,53,0.3);">
+                    <span class="cycle-icon">&#x1F528;</span>
+                    <span style="color: var(--highlight);">Build</span>
+                </div>
+                <div class="cycle-node" style="border-color: rgba(255,107,53,0.3);">
+                    <span class="cycle-icon">&#x1F4CA;</span>
+                    <span style="color: var(--highlight);">ST Factory</span>
+                </div>
+                <div class="cycle-node" style="border-color: rgba(0,230,118,0.3);">
+                    <span class="cycle-icon">&#x1F441;</span>
+                    <span style="color: var(--success);">Sky-Lynx</span>
+                </div>
+                <div class="cycle-node" style="border-color: rgba(0,230,118,0.3);">
+                    <span class="cycle-icon">&#x2B06;</span>
+                    <span style="color: var(--success);">Better Agents</span>
+                </div>
+
+                <!-- Center label -->
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 4;">
+                    <div style="font-size: clamp(10px, 1.5vw, 14px); color: var(--accent); font-family: var(--font-display); font-weight: 600;">LOOP</div>
+                    <div style="font-size: clamp(7px, 1vw, 9px); color: var(--text-dim);">Each cycle<br>gets smarter</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 21: SELF-CORRECTING
+         ========================================= -->
+    <section class="slide" data-chapter="9">
+        <span class="chapter-badge">Chapter 9 -- The Loop</span>
+        <div class="slide-content">
+            <h2 class="reveal">Self-Correcting Feedback Loop</h2>
+            <div class="glow-divider reveal delay-1"></div>
+            <p class="subtitle reveal delay-2" style="max-width: 550px; margin-bottom: var(--content-gap);">
+                This is what makes ST Metro fundamentally different. The system does not just build software. It learns from every build and improves itself.
+            </p>
+            <div class="grid-3 reveal-scale delay-3" style="max-width: 700px;">
+                <div class="glow-card" style="text-align: center;">
+                    <h3 style="font-size: clamp(1.5rem, 3vw, 2.5rem); color: var(--accent); font-family: var(--font-display);">Week 1</h3>
+                    <p>Baseline agents make first builds. Metrics captured.</p>
+                </div>
+                <div class="glow-card" style="text-align: center;">
+                    <h3 style="font-size: clamp(1.5rem, 3vw, 2.5rem); color: var(--amber); font-family: var(--font-display);">Week 4</h3>
+                    <p>Sky-Lynx has improved agents 3 times. Build quality up.</p>
+                </div>
+                <div class="glow-card" style="text-align: center;">
+                    <h3 style="font-size: clamp(1.5rem, 3vw, 2.5rem); color: var(--success); font-family: var(--font-display);">Week 12</h3>
+                    <p>Agents operating at peak. Signal-to-noise ratio optimized.</p>
+                </div>
+            </div>
+            <p class="reveal delay-4" style="margin-top: var(--content-gap); font-size: var(--body-size); color: var(--accent);">
+                Compounding intelligence. Every revolution of the loop makes the next one better.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 22: WHAT'S NEXT
+         Chapter 10: What's Next
+         ========================================= -->
+    <section class="slide chapter-intro" data-chapter="10">
+        <span class="chapter-badge">Chapter 10 -- What's Next</span>
+        <div class="slide-content">
+            <h2 class="reveal">What's Coming</h2>
+            <div class="glow-divider reveal delay-1"></div>
+            <div class="grid-3 reveal-scale delay-2" style="max-width: 750px; margin-top: var(--content-gap);">
+                <div class="glow-card" style="text-align: center;">
+                    <div class="icon-circle cyan" style="margin-bottom: 0.3rem;">
+                        <span>&#x1F4F1;</span>
+                    </div>
+                    <h3 style="color: var(--accent); font-size: var(--body-size);">EA-Claude (Data)</h3>
+                    <p>Chief of Staff AI running through Telegram. Manages the entire operation conversationally.</p>
+                </div>
+                <div class="glow-card" style="text-align: center;">
+                    <div class="icon-circle amber" style="margin-bottom: 0.3rem;">
+                        <span>&#x26A1;</span>
+                    </div>
+                    <h3 style="color: var(--amber); font-size: var(--body-size);">Async Workers</h3>
+                    <p>Specialized dispatch agents: Starscream, Ravage, Soundwave. Each with a unique skill set.</p>
+                </div>
+                <div class="glow-card" style="text-align: center;">
+                    <div class="icon-circle green" style="margin-bottom: 0.3rem;">
+                        <span>&#x1F30D;</span>
+                    </div>
+                    <h3 style="color: var(--success); font-size: var(--body-size);">Agentic SCM</h3>
+                    <p>Applying the dark factory methodology to real-world supply chain management.</p>
+                </div>
+            </div>
+            <p class="reveal delay-3 subtitle" style="margin-top: var(--content-gap); max-width: 500px;">
+                The architecture that builds software can build anything.
+            </p>
+        </div>
+    </section>
+
+    <!-- =========================================
+         SLIDE 23: FINAL - ONE OPERATOR
+         ========================================= -->
+    <section class="slide final-slide" data-chapter="10">
+        <span class="chapter-badge">Chapter 10 -- What's Next</span>
+        <div class="slide-content">
+            <p class="label reveal delay-1" style="margin-bottom: var(--element-gap); letter-spacing: 0.3em;">The Vision</p>
+            <h1 class="reveal delay-2" style="background: linear-gradient(135deg, var(--text-primary) 30%, var(--accent) 60%, var(--highlight) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; max-width: 800px;">
+                One Operator.<br>One Production Line.<br>Infinite Output.
+            </h1>
+            <div class="glow-divider reveal delay-3" style="width: clamp(60px, 10vw, 120px);"></div>
+            <p class="subtitle reveal delay-4" style="max-width: 500px;">
+                A single person running an entire autonomous software production line. From market signal to deployed product. The dark factory is here.
+            </p>
+            <div class="factory-visual reveal delay-5" style="margin-top: var(--content-gap); opacity: 0.1;">
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+                <div class="factory-building"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         JAVASCRIPT: SLIDE PRESENTATION CONTROLLER
+         Handles navigation, animations, progress, and interactions
+         =========================================== -->
+    <script>
+        class SlidePresentation {
+            constructor() {
+                this.slides = document.querySelectorAll('.slide');
+                this.currentSlide = 0;
+                this.totalSlides = this.slides.length;
+                this.isTransitioning = false;
+                this.touchStartY = 0;
+
+                this.progressBar = document.getElementById('progressBar');
+                this.slideCounter = document.getElementById('slideCounter');
+                this.navDotsContainer = document.getElementById('navDots');
+
+                this.init();
+            }
+
+            init() {
+                this.createNavDots();
+                this.setupIntersectionObserver();
+                this.setupKeyboardNav();
+                this.setupTouchNav();
+                this.setupWheelNav();
+                this.updateUI();
+
+                // Mark first slide as visible
+                this.slides[0].classList.add('visible');
+            }
+
+            /* -----------------------------------------------
+               NAV DOTS: Create dot per slide, highlight chapter starts
+               ----------------------------------------------- */
+            createNavDots() {
+                const chapters = new Set();
+                this.slides.forEach((slide, i) => {
+                    const dot = document.createElement('button');
+                    dot.className = 'nav-dot';
+                    dot.setAttribute('aria-label', `Go to slide ${i + 1}`);
+
+                    const chapter = slide.dataset.chapter;
+                    if (!chapters.has(chapter)) {
+                        dot.classList.add('chapter-start');
+                        chapters.add(chapter);
+                    }
+
+                    dot.addEventListener('click', () => this.goToSlide(i));
+                    this.navDotsContainer.appendChild(dot);
+                });
+            }
+
+            /* -----------------------------------------------
+               INTERSECTION OBSERVER: Detect which slide is visible
+               and trigger reveal animations
+               ----------------------------------------------- */
+            setupIntersectionObserver() {
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('visible');
+                            const index = Array.from(this.slides).indexOf(entry.target);
+                            if (index !== -1) {
+                                this.currentSlide = index;
+                                this.updateUI();
+                            }
+                        }
+                    });
+                }, {
+                    threshold: 0.5
+                });
+
+                this.slides.forEach(slide => observer.observe(slide));
+            }
+
+            /* -----------------------------------------------
+               KEYBOARD NAVIGATION: Arrow keys, space, page up/down
+               ----------------------------------------------- */
+            setupKeyboardNav() {
+                document.addEventListener('keydown', (e) => {
+                    switch(e.key) {
+                        case 'ArrowDown':
+                        case 'ArrowRight':
+                        case ' ':
+                        case 'PageDown':
+                            e.preventDefault();
+                            this.nextSlide();
+                            break;
+                        case 'ArrowUp':
+                        case 'ArrowLeft':
+                        case 'PageUp':
+                            e.preventDefault();
+                            this.prevSlide();
+                            break;
+                        case 'Home':
+                            e.preventDefault();
+                            this.goToSlide(0);
+                            break;
+                        case 'End':
+                            e.preventDefault();
+                            this.goToSlide(this.totalSlides - 1);
+                            break;
+                    }
+                });
+            }
+
+            /* -----------------------------------------------
+               TOUCH NAVIGATION: Swipe up/down
+               ----------------------------------------------- */
+            setupTouchNav() {
+                document.addEventListener('touchstart', (e) => {
+                    this.touchStartY = e.touches[0].clientY;
+                }, { passive: true });
+
+                document.addEventListener('touchend', (e) => {
+                    const diff = this.touchStartY - e.changedTouches[0].clientY;
+                    if (Math.abs(diff) > 50) {
+                        if (diff > 0) this.nextSlide();
+                        else this.prevSlide();
+                    }
+                }, { passive: true });
+            }
+
+            /* -----------------------------------------------
+               WHEEL NAVIGATION: Scroll to navigate (throttled)
+               ----------------------------------------------- */
+            setupWheelNav() {
+                let lastWheel = 0;
+                document.addEventListener('wheel', (e) => {
+                    const now = Date.now();
+                    if (now - lastWheel < 800) return;
+                    lastWheel = now;
+
+                    if (e.deltaY > 30) this.nextSlide();
+                    else if (e.deltaY < -30) this.prevSlide();
+                }, { passive: true });
+            }
+
+            /* -----------------------------------------------
+               NAVIGATION: Go to specific slide
+               ----------------------------------------------- */
+            goToSlide(index) {
+                if (index < 0 || index >= this.totalSlides || this.isTransitioning) return;
+                this.isTransitioning = true;
+                this.currentSlide = index;
+                this.slides[index].scrollIntoView({ behavior: 'smooth' });
+                this.updateUI();
+                setTimeout(() => { this.isTransitioning = false; }, 600);
+            }
+
+            nextSlide() {
+                this.goToSlide(this.currentSlide + 1);
+            }
+
+            prevSlide() {
+                this.goToSlide(this.currentSlide - 1);
+            }
+
+            /* -----------------------------------------------
+               UI UPDATES: Progress bar, counter, active dots
+               ----------------------------------------------- */
+            updateUI() {
+                // Progress bar
+                const progress = ((this.currentSlide + 1) / this.totalSlides) * 100;
+                this.progressBar.style.width = progress + '%';
+
+                // Slide counter
+                const current = String(this.currentSlide + 1).padStart(2, '0');
+                const total = String(this.totalSlides).padStart(2, '0');
+                this.slideCounter.textContent = `${current} / ${total}`;
+
+                // Nav dots
+                const dots = this.navDotsContainer.querySelectorAll('.nav-dot');
+                dots.forEach((dot, i) => {
+                    dot.classList.toggle('active', i === this.currentSlide);
+                });
+            }
+        }
+
+        /* ===========================================
+           INITIALIZE ON DOM READY
+           =========================================== */
+        document.addEventListener('DOMContentLoaded', () => {
+            new SlidePresentation();
+        });
+    </script>
+</body>
+</html>

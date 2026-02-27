@@ -25,3 +25,13 @@ workspace/
 
 # Dashboard — generated reports (runtime data, not source)
 dashboard/reports/*.json
+
+# Python cache
+__pycache__/
+*.pyc
+
+# SQLite artifacts
+:memory:
+
+# Generated outputs (agent team audits, etc.)
+outputs/

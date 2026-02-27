@@ -1,0 +1,479 @@
+{
+  "last_node_id": 14,
+  "last_link_id": 16,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [50, 300],
+      "size": [300, 314],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [1, 9],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "UNETLoader",
+      "pos": [50, 50],
+      "size": [315, 82],
+      "title": "Load Diffusion Model (High Noise)",
+      "properties": {
+        "Node name for S&R": "UNETLoader"
+      },
+      "widgets_values": [
+        "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+        "fp8_e4m3fn_fast"
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [2],
+          "slot_index": 0
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "UNETLoader",
+      "pos": [50, 170],
+      "size": [315, 82],
+      "title": "Load Diffusion Model (Low Noise)",
+      "properties": {
+        "Node name for S&R": "UNETLoader"
+      },
+      "widgets_values": [
+        "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+        "fp8_e4m3fn_fast"
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [3],
+          "slot_index": 0
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "CLIPLoader",
+      "pos": [450, 50],
+      "size": [315, 82],
+      "title": "Load CLIP (Text Encoder)",
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+        "wan"
+      ],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [4, 5],
+          "slot_index": 0
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "VAELoader",
+      "pos": [450, 170],
+      "size": [315, 58],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "wan_2.1_vae.safetensors"
+      ],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [6],
+          "slot_index": 0
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "CLIPVisionLoader",
+      "pos": [450, 260],
+      "size": [315, 58],
+      "properties": {
+        "Node name for S&R": "CLIPVisionLoader"
+      },
+      "widgets_values": [
+        "clip_vision_h.safetensors"
+      ],
+      "outputs": [
+        {
+          "name": "CLIP_VISION",
+          "type": "CLIP_VISION",
+          "links": [7],
+          "slot_index": 0
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "CLIPTextEncode",
+      "pos": [850, 50],
+      "size": [400, 130],
+      "title": "Positive Prompt",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "Character turns head and speaks, smooth animated motion, consistent art style, high quality animation"
+      ],
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [10, 13],
+          "slot_index": 0
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "CLIPTextEncode",
+      "pos": [850, 220],
+      "size": [400, 130],
+      "title": "Negative Prompt",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "blurry, distorted, low quality, static, morphing, deformed, flickering, jittery"
+      ],
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [11, 14],
+          "slot_index": 0
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "CLIPVisionEncode",
+      "pos": [450, 400],
+      "size": [315, 60],
+      "properties": {
+        "Node name for S&R": "CLIPVisionEncode"
+      },
+      "inputs": [
+        {
+          "name": "clip_vision",
+          "type": "CLIP_VISION",
+          "link": 7
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CLIP_VISION_OUTPUT",
+          "type": "CLIP_VISION_OUTPUT",
+          "links": [8],
+          "slot_index": 0
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Wan22ImageToVideoLatent",
+      "pos": [850, 400],
+      "size": [315, 130],
+      "properties": {
+        "Node name for S&R": "Wan22ImageToVideoLatent"
+      },
+      "widgets_values": [
+        832,
+        480,
+        81,
+        1
+      ],
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "clip_vision_output",
+          "type": "CLIP_VISION_OUTPUT",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [12],
+          "slot_index": 0
+        },
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": null
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "KSamplerAdvanced",
+      "pos": [1350, 50],
+      "size": [315, 334],
+      "title": "KSampler (High Noise Phase -- Steps 0-10)",
+      "properties": {
+        "Node name for S&R": "KSamplerAdvanced"
+      },
+      "widgets_values": [
+        "enable",
+        42,
+        "fixed",
+        20,
+        3.5,
+        "euler",
+        "beta",
+        0,
+        10,
+        "enable"
+      ],
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 2
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 10
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 11
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [15],
+          "slot_index": 0
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "KSamplerAdvanced",
+      "pos": [1350, 450],
+      "size": [315, 334],
+      "title": "KSampler (Low Noise Phase -- Steps 10-20)",
+      "properties": {
+        "Node name for S&R": "KSamplerAdvanced"
+      },
+      "widgets_values": [
+        "disable",
+        42,
+        "fixed",
+        20,
+        3.5,
+        "euler",
+        "beta",
+        10,
+        10000,
+        "disable"
+      ],
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 3
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 13
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 14
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [16],
+          "slot_index": 0
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "VAEDecode",
+      "pos": [1750, 300],
+      "size": [210, 46],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 16
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [17],
+          "slot_index": 0
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "VHS_VideoCombine",
+      "pos": [2050, 250],
+      "size": [315, 218],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": [
+        16,
+        0,
+        "video/h264-mp4",
+        true,
+        true,
+        "wan22_i2v",
+        "output",
+        {}
+      ],
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 17
+        }
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 10, 0, "IMAGE"],
+    [2, 2, 0, 11, 0, "MODEL"],
+    [3, 3, 0, 12, 0, "MODEL"],
+    [4, 4, 0, 7, 0, "CLIP"],
+    [5, 4, 0, 8, 0, "CLIP"],
+    [6, 5, 0, 13, 1, "VAE"],
+    [7, 6, 0, 9, 0, "CLIP_VISION"],
+    [8, 9, 0, 10, 1, "CLIP_VISION_OUTPUT"],
+    [9, 1, 0, 9, 1, "IMAGE"],
+    [10, 7, 0, 11, 1, "CONDITIONING"],
+    [11, 8, 0, 11, 2, "CONDITIONING"],
+    [12, 10, 0, 11, 3, "LATENT"],
+    [13, 7, 0, 12, 1, "CONDITIONING"],
+    [14, 8, 0, 12, 2, "CONDITIONING"],
+    [15, 11, 0, 12, 3, "LATENT"],
+    [16, 12, 0, 13, 0, "LATENT"],
+    [17, 13, 0, 14, 0, "IMAGE"]
+  ],
+  "groups": [
+    {
+      "title": "Model Loaders",
+      "bounding": [30, 20, 770, 510],
+      "color": "#3f789e"
+    },
+    {
+      "title": "Prompts & Conditioning",
+      "bounding": [830, 20, 440, 550],
+      "color": "#8A8",
+      "font_size": 24
+    },
+    {
+      "title": "Dual-Expert Sampling (MoE)",
+      "bounding": [1330, 20, 340, 800],
+      "color": "#b58b2b"
+    },
+    {
+      "title": "Output",
+      "bounding": [1730, 220, 660, 300],
+      "color": "#a1309b"
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.8,
+      "offset": [0, 0]
+    },
+    "info": {
+      "name": "Wan 2.2 I2V 14B FP8 -- 480p (16GB VRAM)",
+      "author": "M2AI / Data (EA-Claude)",
+      "description": "Wan 2.2 Image-to-Video workflow using dual-expert MoE architecture. Optimized for 16GB VRAM at 832x480, 81 frames (~5 seconds at 16fps). Requires: wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors, wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors, umt5_xxl_fp8_e4m3fn_scaled.safetensors, clip_vision_h.safetensors, wan_2.1_vae.safetensors, and ComfyUI-VideoHelperSuite custom node.",
+      "version": "1.0",
+      "created": "2026-02-27"
+    }
+  },
+  "version": 0.4
+}
