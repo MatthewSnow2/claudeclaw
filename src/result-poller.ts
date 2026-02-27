@@ -10,6 +10,7 @@ const WORKER_LABELS: Record<string, string> = {
   starscream: 'Starscream',
   ravage: 'Ravage',
   soundwave: 'Soundwave',
+  astrotrain: 'AstroTrain',
   default: 'Worker',
 };
 

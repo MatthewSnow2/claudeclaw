@@ -17,7 +17,9 @@ export type TelemetryEvent =
   | AgentCompletedEvent
   | ToolUsedEvent
   | ScheduledTaskExecutedEvent
+  | ScheduledTaskDispatchedEvent
   | TaskDispatchedEvent
+  | DispatchTaskCompletedEvent
   | ErrorEvent;
 
 interface BaseEvent {
@@ -61,10 +63,26 @@ export interface ScheduledTaskExecutedEvent extends BaseEvent {
   latency_ms: number;
 }
 
+export interface ScheduledTaskDispatchedEvent extends BaseEvent {
+  event_type: 'scheduled_task_dispatched';
+  task_id: string;
+  dispatch_id: string;
+  worker_type: string;
+  prompt_preview: string;
+}
+
 export interface TaskDispatchedEvent extends BaseEvent {
   event_type: 'task_dispatched';
   task_id: string;
   worker_type: string;
+}
+
+export interface DispatchTaskCompletedEvent extends BaseEvent {
+  event_type: 'dispatch_task_completed';
+  task_id: string;
+  worker_type: string;
+  success: boolean;
+  latency_ms: number;
 }
 
 export interface ErrorEvent extends BaseEvent {

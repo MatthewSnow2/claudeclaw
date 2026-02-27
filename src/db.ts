@@ -79,6 +79,58 @@ function createSchema(database: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_dispatch_status ON dispatch_queue(status);
     CREATE INDEX IF NOT EXISTS idx_dispatch_worker ON dispatch_queue(worker_type, status);
+
+    CREATE TABLE IF NOT EXISTS conversation_log (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id     TEXT NOT NULL,
+      session_id  TEXT,
+      role        TEXT NOT NULL,
+      content     TEXT NOT NULL,
+      created_at  INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_convo_log_chat ON conversation_log(chat_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS token_usage (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id         TEXT NOT NULL,
+      session_id      TEXT,
+      input_tokens    INTEGER NOT NULL DEFAULT 0,
+      output_tokens   INTEGER NOT NULL DEFAULT 0,
+      cache_read      INTEGER NOT NULL DEFAULT 0,
+      cost_usd        REAL NOT NULL DEFAULT 0,
+      did_compact     INTEGER NOT NULL DEFAULT 0,
+      created_at      INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_token_usage_session ON token_usage(session_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_token_usage_chat ON token_usage(chat_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS processed_messages (
+      message_id  INTEGER PRIMARY KEY,
+      created_at  INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS memory_vectors (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id         TEXT NOT NULL,
+      content         TEXT NOT NULL,
+      source_type     TEXT NOT NULL DEFAULT 'extraction',
+      embedding       BLOB NOT NULL,
+      salience        REAL NOT NULL DEFAULT 1.0,
+      created_at      INTEGER NOT NULL,
+      accessed_at     INTEGER NOT NULL,
+      source_log_ids  TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memvec_chat ON memory_vectors(chat_id);
+
+    CREATE TABLE IF NOT EXISTS extraction_state (
+      chat_id         TEXT PRIMARY KEY,
+      last_log_id     INTEGER NOT NULL DEFAULT 0,
+      last_run_at     INTEGER NOT NULL,
+      facts_total     INTEGER NOT NULL DEFAULT 0
+    );
   `);
 }
 
@@ -87,6 +139,7 @@ export function initDatabase(): void {
   const dbPath = path.join(STORE_DIR, 'claudeclaw.db');
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
   createSchema(db);
 }
 
@@ -112,6 +165,32 @@ export function setSession(chatId: string, sessionId: string): void {
 
 export function clearSession(chatId: string): void {
   db.prepare('DELETE FROM sessions WHERE chat_id = ?').run(chatId);
+}
+
+// ── Message Dedup ───────────────────────────────────────────────────
+// SQLite-backed dedup survives PM2 restarts (unlike the old in-memory Map).
+// Telegram re-delivers pending updates after a 409 conflict restart,
+// so we need persistent tracking to avoid processing the same message twice.
+
+const DEDUP_TTL_SECONDS = 600; // 10 minutes — well beyond Telegram's retry window
+
+export function isMessageProcessed(messageId: number): boolean {
+  const row = db
+    .prepare('SELECT 1 FROM processed_messages WHERE message_id = ?')
+    .get(messageId);
+  return !!row;
+}
+
+export function markMessageProcessed(messageId: number): void {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    'INSERT OR IGNORE INTO processed_messages (message_id, created_at) VALUES (?, ?)',
+  ).run(messageId, now);
+}
+
+export function pruneProcessedMessages(): void {
+  const cutoff = Math.floor(Date.now() / 1000) - DEDUP_TTL_SECONDS;
+  db.prepare('DELETE FROM processed_messages WHERE created_at < ?').run(cutoff);
 }
 
 // ── Memory ──────────────────────────────────────────────────────────
@@ -257,7 +336,7 @@ export function resumeScheduledTask(id: string): void {
 
 // ── Dispatch Queue ──────────────────────────────────────────────────
 
-export type WorkerType = 'starscream' | 'ravage' | 'soundwave' | 'default';
+export type WorkerType = 'starscream' | 'ravage' | 'soundwave' | 'astrotrain' | 'default';
 export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed';
 
 export interface DispatchTask {
@@ -291,23 +370,28 @@ export function enqueueTask(
 
 export function claimTask(workerType: WorkerType): DispatchTask | undefined {
   const now = Math.floor(Date.now() / 1000);
-  // Atomic claim: find oldest queued task for this worker type and set to running
-  const task = db
-    .prepare(
-      `SELECT * FROM dispatch_queue
-       WHERE worker_type = ? AND status = 'queued'
-       ORDER BY created_at ASC
-       LIMIT 1`,
-    )
-    .get(workerType) as DispatchTask | undefined;
+  // Atomic claim via transaction: prevents race conditions when multiple
+  // worker processes poll simultaneously.
+  const claimTx = db.transaction(() => {
+    const task = db
+      .prepare(
+        `SELECT * FROM dispatch_queue
+         WHERE worker_type = ? AND status = 'queued'
+         ORDER BY created_at ASC
+         LIMIT 1`,
+      )
+      .get(workerType) as DispatchTask | undefined;
 
-  if (!task) return undefined;
+    if (!task) return undefined;
 
-  db.prepare(
-    `UPDATE dispatch_queue SET status = 'running', started_at = ? WHERE id = ?`,
-  ).run(now, task.id);
+    db.prepare(
+      `UPDATE dispatch_queue SET status = 'running', started_at = ? WHERE id = ?`,
+    ).run(now, task.id);
 
-  return { ...task, status: 'running', started_at: now };
+    return { ...task, status: 'running' as const, started_at: now };
+  });
+
+  return claimTx();
 }
 
 export function completeTask(id: string, result: string): void {
@@ -347,4 +431,205 @@ export function resetStaleTasks(timeoutSeconds: number = 600): number {
      WHERE status = 'running' AND started_at < ?`,
   ).run(cutoff);
   return result.changes;
+}
+
+// ── Conversation Log ──────────────────────────────────────────────────
+
+export interface ConversationTurn {
+  id: number;
+  chat_id: string;
+  session_id: string | null;
+  role: string;
+  content: string;
+  created_at: number;
+}
+
+export function logConversationTurn(
+  chatId: string,
+  role: 'user' | 'assistant',
+  content: string,
+  sessionId?: string,
+): void {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    `INSERT INTO conversation_log (chat_id, session_id, role, content, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(chatId, sessionId ?? null, role, content, now);
+}
+
+export function getRecentConversation(
+  chatId: string,
+  limit = 20,
+): ConversationTurn[] {
+  return db
+    .prepare(
+      `SELECT * FROM conversation_log WHERE chat_id = ?
+       ORDER BY created_at DESC LIMIT ?`,
+    )
+    .all(chatId, limit) as ConversationTurn[];
+}
+
+/**
+ * Prune old conversation_log entries, keeping only the most recent N rows per chat.
+ * Called alongside memory decay to prevent unbounded disk growth.
+ */
+export function pruneConversationLog(keepPerChat = 500): void {
+  const chats = db
+    .prepare('SELECT DISTINCT chat_id FROM conversation_log')
+    .all() as Array<{ chat_id: string }>;
+
+  const deleteStmt = db.prepare(`
+    DELETE FROM conversation_log
+    WHERE chat_id = ? AND id NOT IN (
+      SELECT id FROM conversation_log
+      WHERE chat_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    )
+  `);
+
+  for (const chat of chats) {
+    deleteStmt.run(chat.chat_id, chat.chat_id, keepPerChat);
+  }
+}
+
+// ── Token Usage ──────────────────────────────────────────────────────
+
+export function saveTokenUsage(
+  chatId: string,
+  sessionId: string | undefined,
+  inputTokens: number,
+  outputTokens: number,
+  cacheRead: number,
+  costUsd: number,
+  didCompact: boolean,
+): void {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    `INSERT INTO token_usage (chat_id, session_id, input_tokens, output_tokens, cache_read, cost_usd, did_compact, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(chatId, sessionId ?? null, inputTokens, outputTokens, cacheRead, costUsd, didCompact ? 1 : 0, now);
+}
+
+export interface SessionTokenSummary {
+  turns: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  lastCacheRead: number;
+  totalCostUsd: number;
+  compactions: number;
+  firstTurnAt: number;
+  lastTurnAt: number;
+}
+
+// ── Memory Vectors ──────────────────────────────────────────────────
+
+export interface MemoryVector {
+  id: number;
+  chat_id: string;
+  content: string;
+  source_type: string;
+  embedding: Buffer;
+  salience: number;
+  created_at: number;
+  accessed_at: number;
+  source_log_ids: string | null;
+}
+
+export function getMemoryVectors(chatId: string): MemoryVector[] {
+  return db
+    .prepare('SELECT * FROM memory_vectors WHERE chat_id = ?')
+    .all(chatId) as MemoryVector[];
+}
+
+export function saveMemoryVector(
+  chatId: string,
+  content: string,
+  embedding: Buffer,
+  sourceLogIds?: string,
+  sourceType = 'extraction',
+): void {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    `INSERT INTO memory_vectors (chat_id, content, source_type, embedding, salience, created_at, accessed_at, source_log_ids)
+     VALUES (?, ?, ?, ?, 1.0, ?, ?, ?)`,
+  ).run(chatId, content, sourceType, embedding, now, now, sourceLogIds ?? null);
+}
+
+export function touchMemoryVector(id: number): void {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    'UPDATE memory_vectors SET accessed_at = ?, salience = MIN(salience + 0.1, 5.0) WHERE id = ?',
+  ).run(now, id);
+}
+
+export function decayMemoryVectors(): void {
+  const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
+  db.prepare(
+    'UPDATE memory_vectors SET salience = salience * 0.98 WHERE created_at < ?',
+  ).run(oneDayAgo);
+  db.prepare('DELETE FROM memory_vectors WHERE salience < 0.1').run();
+}
+
+// ── Extraction State ────────────────────────────────────────────────
+
+export function getExtractionWatermark(chatId: string): { lastLogId: number; factsTotal: number } {
+  const row = db
+    .prepare('SELECT last_log_id, facts_total FROM extraction_state WHERE chat_id = ?')
+    .get(chatId) as { last_log_id: number; facts_total: number } | undefined;
+  return row ? { lastLogId: row.last_log_id, factsTotal: row.facts_total } : { lastLogId: 0, factsTotal: 0 };
+}
+
+export function setExtractionWatermark(chatId: string, lastLogId: number, factsTotal: number): void {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    `INSERT OR REPLACE INTO extraction_state (chat_id, last_log_id, last_run_at, facts_total)
+     VALUES (?, ?, ?, ?)`,
+  ).run(chatId, lastLogId, now, factsTotal);
+}
+
+export function getSessionTokenUsage(sessionId: string): SessionTokenSummary | null {
+  const row = db
+    .prepare(
+      `SELECT
+         COUNT(*)           as turns,
+         SUM(input_tokens)  as totalInputTokens,
+         SUM(output_tokens) as totalOutputTokens,
+         SUM(cost_usd)      as totalCostUsd,
+         SUM(did_compact)   as compactions,
+         MIN(created_at)    as firstTurnAt,
+         MAX(created_at)    as lastTurnAt
+       FROM token_usage WHERE session_id = ?`,
+    )
+    .get(sessionId) as {
+      turns: number;
+      totalInputTokens: number;
+      totalOutputTokens: number;
+      totalCostUsd: number;
+      compactions: number;
+      firstTurnAt: number;
+      lastTurnAt: number;
+    } | undefined;
+
+  if (!row || row.turns === 0) return null;
+
+  // Get the most recent turn's cache_read -- that's the actual context window size
+  const lastRow = db
+    .prepare(
+      `SELECT cache_read FROM token_usage
+       WHERE session_id = ?
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(sessionId) as { cache_read: number } | undefined;
+
+  return {
+    turns: row.turns,
+    totalInputTokens: row.totalInputTokens,
+    totalOutputTokens: row.totalOutputTokens,
+    lastCacheRead: lastRow?.cache_read ?? 0,
+    totalCostUsd: row.totalCostUsd,
+    compactions: row.compactions,
+    firstTurnAt: row.firstTurnAt,
+    lastTurnAt: row.lastTurnAt,
+  };
 }
