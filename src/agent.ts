@@ -6,9 +6,27 @@ import { readLocalEnvFile } from './env.js';
 import { logger } from './logger.js';
 import * as telemetry from './telemetry.js';
 
+export interface UsageInfo {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  totalCostUsd: number;
+  /** True if the SDK auto-compacted context during this turn */
+  didCompact: boolean;
+  /** Token count before compaction (if it happened) */
+  preCompactTokens: number | null;
+  /**
+   * The cache_read_input_tokens from the LAST API call in the turn.
+   * Unlike the cumulative cacheReadInputTokens, this reflects the actual
+   * context window size (cumulative overcounts on multi-step tool-use turns).
+   */
+  lastCallCacheRead: number;
+}
+
 export interface AgentResult {
   text: string | null;
   newSessionId: string | undefined;
+  usage: UsageInfo | null;
 }
 
 /**
@@ -135,12 +153,14 @@ export async function runAgent(
   sessionId: string | undefined,
   onTyping: () => void,
   onProgress?: (msg: string) => Promise<void>,
+  cwd?: string,
 ): Promise<AgentResult> {
   if (activeAgentCalls >= MAX_CONCURRENT_AGENTS) {
     logger.warn({ activeAgentCalls }, 'Agent concurrency limit reached');
     return {
       text: 'Already processing another request. Try again in a moment.',
       newSessionId: sessionId,
+      usage: null,
     };
   }
 
@@ -148,7 +168,7 @@ export async function runAgent(
   try {
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        return await runAgentInner(message, sessionId, onTyping, onProgress);
+        return await runAgentInner(message, sessionId, onTyping, onProgress, cwd);
       } catch (err) {
         if (attempt < MAX_RETRIES && isRetryableError(err)) {
           const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
@@ -177,6 +197,7 @@ async function runAgentInner(
   sessionId: string | undefined,
   onTyping: () => void,
   onProgress?: (msg: string) => Promise<void>,
+  cwd?: string,
 ): Promise<AgentResult> {
   // Read auth overrides from LOCAL .env only (not ~/.env.shared).
   // ANTHROPIC_API_KEY in ~/.env.shared would override Max plan OAuth with API billing.
@@ -197,6 +218,14 @@ async function runAgentInner(
   // The claude CLI subprocess will fall back to ~/.claude/.credentials.json
   // (Max plan OAuth) once the API key is absent from its environment.
   delete sdkEnv.ANTHROPIC_API_KEY;
+
+  // Strip Telegram credentials from the subprocess environment. The Claude
+  // subprocess does NOT need Telegram access -- the Node.js bot process handles
+  // all Telegram interaction. Without this, the subprocess can read the token
+  // and send messages to the chat via curl, causing a feedback loop where
+  // tool-use progress descriptions arrive as incoming messages to the bot.
+  delete sdkEnv.TELEGRAM_BOT_TOKEN;
+  delete sdkEnv.ALLOWED_CHAT_ID;
 
   if (secrets.CLAUDE_CODE_OAUTH_TOKEN) {
     sdkEnv.CLAUDE_CODE_OAUTH_TOKEN = secrets.CLAUDE_CODE_OAUTH_TOKEN;
@@ -219,6 +248,12 @@ async function runAgentInner(
   let resultReceived = false; // Guard against duplicate result events from SDK
   let lastProgressTime = 0;
 
+  // Usage tracking for context window monitoring + token accounting
+  let usage: UsageInfo | null = null;
+  let didCompact = false;
+  let preCompactTokens: number | null = null;
+  let lastCallCacheRead = 0;
+
   // Refresh typing indicator on an interval while Claude works.
   // Telegram's "typing..." action expires after ~5s.
   const typingInterval = setInterval(onTyping, 4000);
@@ -232,8 +267,9 @@ async function runAgentInner(
     for await (const event of query({
       prompt: singleTurn(message),
       options: {
-        // cwd = ea-claude project root so Claude Code loads our CLAUDE.md
-        cwd: PROJECT_ROOT,
+        // cwd sets which CLAUDE.md is loaded. Defaults to ea-claude project root.
+        // Workers override this to load their persona-specific CLAUDE.md.
+        cwd: cwd ?? PROJECT_ROOT,
 
         // Resume the previous session for this chat (persistent context)
         resume: sessionId,
@@ -259,6 +295,28 @@ async function runAgentInner(
         if (!newSessionId) {
           newSessionId = ev['session_id'] as string;
           logger.info({ newSessionId }, 'Session initialized');
+        }
+      }
+
+      // Detect auto-compaction (context window was getting full)
+      if (ev['type'] === 'system' && ev['subtype'] === 'compact_boundary') {
+        didCompact = true;
+        const meta = ev['compact_metadata'] as { trigger: string; pre_tokens: number } | undefined;
+        preCompactTokens = meta?.pre_tokens ?? null;
+        logger.warn(
+          { trigger: meta?.trigger, preCompactTokens },
+          'Context window compacted',
+        );
+      }
+
+      // Track per-call cache reads from assistant message events.
+      // Each assistant message represents one API call; its usage reflects
+      // that single call's context size (not cumulative across the turn).
+      if (ev['type'] === 'assistant') {
+        const msgUsage = (ev['message'] as Record<string, unknown>)?.['usage'] as Record<string, number> | undefined;
+        const callCacheRead = msgUsage?.['cache_read_input_tokens'] ?? 0;
+        if (callCacheRead > 0) {
+          lastCallCacheRead = callCacheRead;
         }
       }
 
@@ -302,6 +360,31 @@ async function runAgentInner(
         }
         resultReceived = true;
         resultText = (ev['result'] as string | null | undefined) ?? null;
+
+        // Extract usage info from result event
+        const evUsage = ev['usage'] as Record<string, number> | undefined;
+        if (evUsage) {
+          usage = {
+            inputTokens: evUsage['input_tokens'] ?? 0,
+            outputTokens: evUsage['output_tokens'] ?? 0,
+            cacheReadInputTokens: evUsage['cache_read_input_tokens'] ?? 0,
+            totalCostUsd: (ev['total_cost_usd'] as number) ?? 0,
+            didCompact,
+            preCompactTokens,
+            lastCallCacheRead,
+          };
+          logger.info(
+            {
+              inputTokens: usage.inputTokens,
+              cacheReadTokens: usage.cacheReadInputTokens,
+              lastCallCacheRead: usage.lastCallCacheRead,
+              costUsd: usage.totalCostUsd,
+              didCompact,
+            },
+            'Turn usage',
+          );
+        }
+
         logger.info(
           { hasResult: !!resultText, subtype: ev['subtype'] },
           'Agent result received',
@@ -324,5 +407,5 @@ async function runAgentInner(
     clearInterval(typingInterval);
   }
 
-  return { text: resultText, newSessionId };
+  return { text: resultText, newSessionId, usage };
 }

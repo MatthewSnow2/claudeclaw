@@ -1,4 +1,4 @@
-import { runAgent, type AgentResult } from './agent.js';
+import { runAgent, type AgentResult, type UsageInfo } from './agent.js';
 
 import { callGemini, callOllama, callOpenAI, callPerplexity } from './llm-backends.js';
 import { logger } from './logger.js';
@@ -8,6 +8,7 @@ export interface RouteResult {
   text: string;
   backend: string;
   newSessionId?: string;
+  usage?: UsageInfo | null;
 }
 
 type Backend = 'claude' | 'gemini' | 'perplexity' | 'ollama' | 'openai' | 'ignore';
@@ -121,6 +122,7 @@ export async function routeMessage(
         text,
         backend: 'claude',
         newSessionId: result.newSessionId,
+        usage: result.usage,
       };
     }
 
