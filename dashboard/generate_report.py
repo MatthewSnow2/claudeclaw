@@ -39,7 +39,7 @@ GIT_PROJECTS = [
 # Services to health-check
 SERVICES = {
     "EA-Claude (Data)": {"check": "pm2", "name": "ea-claude"},
-    "Metroplex": {"check": "systemd", "name": "metroplex"},
+    "Metroplex": {"check": "process", "pattern": "metroplex.py"},
     "HTTP Server": {"check": "port", "port": 8080},
 }
 
@@ -88,6 +88,15 @@ def check_service_health():
                 items.append({"text": label, "detail": "Not found in pm2 process list", "status": "error"})
             else:
                 items.append({"text": label, "detail": f"Status: {status_str}", "status": "warning"})
+
+        elif cfg["check"] == "process":
+            pattern = cfg["pattern"]
+            pids = run(f"pgrep -f '{pattern}' 2>/dev/null")
+            if pids:
+                pid = pids.split("\n")[0]
+                items.append({"text": label, "detail": f"Running (PID {pid})", "status": "ok"})
+            else:
+                items.append({"text": label, "detail": "Not running", "status": "error"})
 
         elif cfg["check"] == "systemd":
             st = systemd_status(cfg["name"])
@@ -559,8 +568,10 @@ def generate():
     dated_path = REPORTS_DIR / f"{date_str}_{hour_str}.json"
     dated_path.write_text(json.dumps(report, indent=2))
 
-    # Write latest.json (always overwritten)
+    # Write latest.json (always overwritten as a regular file, not symlink)
     latest_path = REPORTS_DIR / "latest.json"
+    if latest_path.is_symlink() or latest_path.exists():
+        latest_path.unlink()
     latest_path.write_text(json.dumps(report, indent=2))
 
     print(f"Report written to {dated_path}")

@@ -62,6 +62,44 @@
   }
   .header-meta .time { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--text); }
 
+  /* Live indicator */
+  .live-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ok);
+    animation: pulse 2s infinite;
+  }
+  .live-dot.stale { background: var(--warning); animation: none; }
+  .live-dot.error { background: var(--error); animation: none; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .live-label {
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-secondary);
+  }
+  .refresh-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .refresh-btn.loading { opacity: 0.5; pointer-events: none; }
+
   /* Summary bar */
   .summary-bar {
     display: grid;
@@ -315,6 +353,11 @@
   <div class="header-meta">
     <div class="time" id="current-time"></div>
     <div id="report-date">Loading...</div>
+    <div class="live-bar">
+      <div class="live-dot" id="live-dot"></div>
+      <span class="live-label" id="live-label">connecting...</span>
+      <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()">refresh</button>
+    </div>
   </div>
 </div>
 
@@ -346,7 +389,7 @@
 <div class="sections-grid" id="sections-grid"></div>
 
 <div class="footer">
-  Data Dashboard v1 -- M2AI Command Center -- Auto-refreshes from report JSON
+  Data Dashboard v2 -- M2AI Command Center -- Live polling (30s) from report JSON
 </div>
 
 <script>
@@ -354,6 +397,9 @@
 let reportData = null;
 let timelineData = null;
 let priorities = JSON.parse(localStorage.getItem('data-dashboard-priorities') || '[]');
+let lastLoadTime = null;
+let lastReportTimestamp = null;
+const REFRESH_INTERVAL = 30000; // 30 seconds
 
 // --- Clock ---
 function updateClock() {
@@ -363,34 +409,66 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
+// --- Live Status ---
+function updateLiveStatus(state, msg) {
+  const dot = document.getElementById('live-dot');
+  const label = document.getElementById('live-label');
+  dot.className = 'live-dot' + (state === 'ok' ? '' : ' ' + state);
+  label.textContent = msg;
+}
+
+function manualRefresh() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('loading');
+  btn.textContent = '...';
+  loadData().finally(() => {
+    btn.classList.remove('loading');
+    btn.textContent = 'refresh';
+  });
+}
+
 // --- Load Data ---
 async function loadData() {
   try {
-    // Load latest report (try latest.json first, then today's dated file)
-    let reportResp = await fetch('reports/latest.json');
+    // Cache-bust to get fresh data on every poll
+    const cacheBust = Date.now();
+    let reportResp = await fetch(`reports/latest.json?t=${cacheBust}`);
     if (!reportResp.ok) {
-      // Fallback: try today's dated file
       const today = new Date().toISOString().slice(0, 10);
-      reportResp = await fetch(`reports/${today}_0800.json`);
-    }
-    if (!reportResp.ok) {
-      // Last resort: try undated today file
-      const today = new Date().toISOString().slice(0, 10);
-      reportResp = await fetch(`reports/${today}.json`);
+      reportResp = await fetch(`reports/${today}.json?t=${cacheBust}`);
     }
     if (reportResp.ok) {
-      reportData = await reportResp.json();
+      const newData = await reportResp.json();
+      const newTimestamp = newData.timestamp;
+
+      // Only re-render if data actually changed
+      if (newTimestamp !== lastReportTimestamp) {
+        reportData = newData;
+        lastReportTimestamp = newTimestamp;
+      }
     }
 
     // Load timeline
-    const timelineResp = await fetch('reports/timeline.json');
+    const timelineResp = await fetch(`reports/timeline.json?t=${cacheBust}`);
     if (timelineResp.ok) {
       timelineData = await timelineResp.json();
     }
 
+    lastLoadTime = new Date();
     render();
+
+    // Calculate data freshness
+    const reportAge = reportData ? (Date.now() - new Date(reportData.timestamp).getTime()) / 1000 : Infinity;
+    if (reportAge < 120) {
+      updateLiveStatus('ok', `live -- ${Math.round(reportAge)}s ago`);
+    } else if (reportAge < 600) {
+      updateLiveStatus('ok', `${Math.round(reportAge / 60)}m ago`);
+    } else {
+      updateLiveStatus('stale', `${Math.round(reportAge / 60)}m stale`);
+    }
   } catch (e) {
     console.error('Failed to load data:', e);
+    updateLiveStatus('error', 'fetch failed');
     document.getElementById('report-date').textContent = 'Error loading reports';
   }
 }
@@ -650,8 +728,21 @@ function onDragEnd(e) {
 // --- Init ---
 loadData();
 
-// Auto-refresh every 5 minutes
-setInterval(loadData, 300000);
+// Auto-refresh every 30 seconds for live-ish tracking
+setInterval(loadData, REFRESH_INTERVAL);
+
+// Update freshness label every 10 seconds (even between fetches)
+setInterval(() => {
+  if (!reportData) return;
+  const reportAge = (Date.now() - new Date(reportData.timestamp).getTime()) / 1000;
+  if (reportAge < 120) {
+    updateLiveStatus('ok', `live -- ${Math.round(reportAge)}s ago`);
+  } else if (reportAge < 600) {
+    updateLiveStatus('ok', `${Math.round(reportAge / 60)}m ago`);
+  } else {
+    updateLiveStatus('stale', `${Math.round(reportAge / 60)}m stale`);
+  }
+}, 10000);
 </script>
 </body>
 </html>
