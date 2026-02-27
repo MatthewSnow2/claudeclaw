@@ -3,9 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('./db.js', () => ({
   searchMemories: vi.fn(),
   getRecentMemories: vi.fn(),
+  getMemoryVectors: vi.fn().mockReturnValue([]),
   touchMemory: vi.fn(),
+  touchMemoryVector: vi.fn(),
   saveMemory: vi.fn(),
   decayMemories: vi.fn(),
+  decayMemoryVectors: vi.fn(),
+  logConversationTurn: vi.fn(),
+  pruneConversationLog: vi.fn(),
 }));
 
 import {
@@ -20,6 +25,9 @@ import {
   touchMemory,
   saveMemory,
   decayMemories,
+  decayMemoryVectors,
+  logConversationTurn,
+  pruneConversationLog,
 } from './db.js';
 
 const mockSearchMemories = vi.mocked(searchMemories);
@@ -27,6 +35,9 @@ const mockGetRecentMemories = vi.mocked(getRecentMemories);
 const mockTouchMemory = vi.mocked(touchMemory);
 const mockSaveMemory = vi.mocked(saveMemory);
 const mockDecayMemories = vi.mocked(decayMemories);
+const mockDecayMemoryVectors = vi.mocked(decayMemoryVectors);
+const mockLogConversationTurn = vi.mocked(logConversationTurn);
+const mockPruneConversationLog = vi.mocked(pruneConversationLog);
 
 describe('buildMemoryContext', () => {
   beforeEach(() => {
@@ -158,6 +169,12 @@ describe('saveConversationTurn', () => {
     vi.clearAllMocks();
   });
 
+  it('logs both user and assistant messages to conversation_log', () => {
+    saveConversationTurn('chat1', 'I prefer TypeScript over JavaScript always', 'Noted.', 'sess1');
+    expect(mockLogConversationTurn).toHaveBeenCalledWith('chat1', 'user', 'I prefer TypeScript over JavaScript always', 'sess1');
+    expect(mockLogConversationTurn).toHaveBeenCalledWith('chat1', 'assistant', 'Noted.', 'sess1');
+  });
+
   it('saves semantic memory for messages containing "I prefer"', () => {
     saveConversationTurn('chat1', 'I prefer TypeScript over JavaScript always', 'Noted.');
     expect(mockSaveMemory).toHaveBeenCalledWith(
@@ -220,8 +237,10 @@ describe('runDecaySweep', () => {
     vi.clearAllMocks();
   });
 
-  it('calls decayMemories once', () => {
+  it('calls decayMemories, decayMemoryVectors, and pruneConversationLog', () => {
     runDecaySweep();
     expect(mockDecayMemories).toHaveBeenCalledOnce();
+    expect(mockDecayMemoryVectors).toHaveBeenCalledOnce();
+    expect(mockPruneConversationLog).toHaveBeenCalledWith(500);
   });
 });
