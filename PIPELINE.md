@@ -1,6 +1,6 @@
 # ST Metro Pipeline
 
-Last updated: 2026-02-25 23:45 CST
+Last updated: 2026-02-27 CST
 
 This file tracks all in-progress, planned, and parked work across the ST Metro ecosystem. Referenced in daily reports.
 
@@ -91,19 +91,25 @@ Current state: Phases 0-3 mostly done (save parser, BepInEx plugin, real-time in
 - Note: Doubles as portfolio piece + SCM proposal demo
 
 ### AI Video Generation (Private, Personal)
-Approach: Seedance 2.0 (ByteDance cloud) or local via ComfyUI + Wan 2.1/HunyuanVideo.
+Approach: Local via ComfyUI + Wan 2.2/HunyuanVideo/LTX-2. Seedream 5.0 Lite is cloud-only (skip for video).
 Inspiration: Tianyu Xu's classes/videos, Superman vs Dr. Strange Seedance viral demo.
+Setup guide: `claudeclaw/docs/COMFYUI_VIDEO_SETUP.md` (updated 2026-02-27)
+Workflow JSON: `claudeclaw/docs/workflows/wan22_i2v_14b_fp8_480p.json` (importable)
+Validation script: `claudeclaw/scripts/validate_comfyui_env.py`
+- [x] Setup docs completed with verified download URLs, dual-expert workflow, VRAM budget
+- [x] Importable ComfyUI workflow JSON created (14 nodes, dual KSampler MoE architecture)
+- [x] Environment validation script created (checks GPU, CUDA, RAM, disk, models)
+- [ ] Download Wan 2.2 I2V 14B FP8 models to gaming PC (~37GB -- TWO diffusion models + text encoder + VAE + CLIP vision)
+- [ ] Download HunyuanVideo 1.5 I2V FP8 models (~19GB -- cfg-distilled variant)
+- [ ] Run validate_comfyui_env.py on gaming PC to confirm readiness
+- [ ] Import workflow JSON and test Wan 2.2 I2V at 480p with sample image
 - [ ] Start simple: pull reference images, generate test clips from stills
 - [ ] Lower Decks continuation: animate existing comic panels (simpler -- source images exist, consistent style)
 - [ ] Robotech New Generation scene: storyboard Cyclones vs Invid + Alpha rescue (~15-20 shots)
 - [ ] Pull Robotech reference images from online for characters/mechs
-- Note: Lower Decks first (POC), Robotech second (complex). Gaming PC (RTX 5080).
-
-### ST Metro Visual Story/Guide
-- [ ] Narrative structure: tell the ecosystem story for non-engineers
-- [ ] Slide deck / visual presentation (for Skool community + personal reference)
-- [ ] Cover: idea capture (CD + research agents), IdeaForge, Ultra-Magnus pipeline, yce-harness, ST Factory, Sky-Lynx loop, Metroplex L5 layer
-- Note: Not a technical spec. A visual narrative showing the flow. Audience: Skool incubator group.
+- Note: Lower Decks first (POC), Robotech second (complex). Gaming PC (RTX 5080, 16GB VRAM).
+- Note: Wan 2.2 uses dual-expert MoE (high-noise + low-noise models). Requires 32GB+ system RAM for offloading.
+- Note: SVD xt/AnimateDiff now legacy. Seedream 5.0 Lite is cloud-only, skip for video gen.
 
 ### VisionClaw (Meta Ray-Ban Smart Glasses) -- UNPARKED
 DAT SDK now available via GitHub Packages. Blocker cleared.
@@ -122,11 +128,13 @@ DAT SDK now available via GitHub Packages. Blocker cleared.
 ## PARKED - Low Priority
 
 ### ComfyUI Video Generation (Gaming PC)
-- Status: Fully set up, models downloaded, custom nodes installed
-- Models: SVD xt (8.9GB), AnimateDiff v3 (1.56GB), SD 1.5 (3.97GB)
-- Custom nodes: AnimateDiff-Evolved, VideoHelperSuite
+- Status: Setup docs complete, importable workflow ready, validation script ready. Awaiting model downloads on gaming PC.
+- Legacy models (still installed): SVD xt (8.9GB), AnimateDiff v3 (1.56GB), SD 1.5 (3.97GB)
+- Upgrade path: Wan 2.2 I2V 14B FP8 (~37GB), HunyuanVideo 1.5 I2V FP8 (~19GB), LTX-2 (optional)
+- Docs: `docs/COMFYUI_VIDEO_SETUP.md`, `docs/workflows/wan22_i2v_14b_fp8_480p.json`, `scripts/validate_comfyui_env.py`
+- Custom nodes needed: VideoHelperSuite (installed), ComfyUI-GGUF (optional for quantized models)
 - Launch: start_comfyui.bat (manual, cannot run headless)
-- Note: Robotech scene moved to Priority 3 as dedicated item
+- Note: Merged into Priority 3 "AI Video Generation" item. This parked entry is reference only.
 
 ### Beth2.0 (Stacey's Agent)
 - On hold per Matthew's request. Stacey not ready.
@@ -173,3 +181,10 @@ DAT SDK now available via GitHub Packages. Blocker cleared.
 - [x] **Wheelie Nano setup** - SSH from ProBook, passwordless sudo, disk cleanup (93%->80%), ROS2 Humble verified, f1tenth_ws rebuilt clean (18 packages, vesc/ackermann/f1tenth_stack all functional)
 - [x] Blurr full architecture context saved to Perceptor
 - [x] Data Challenger Mode (Christensen filter) implemented in CLAUDE.md
+- [x] Async dispatch Phase 1 implemented (dispatch_queue, classifier, result-poller, bot.ts)
+- [x] Soundwave dashboard section live (reads ST Factory recs, patches, queue, signals)
+- [x] VigilAI competition report generated (AI Fight Club, AI Grand Prix, BVR Gym)
+- [x] **Registered for Anduril AI Grand Prix** (theaigrandprix.com, virtual qualifiers Apr-Jun 2026)
+- [x] **ST Metro Visual Story/Guide** -- narrative structure, slide deck, ecosystem visual (st-metro-visual-story.html, 97KB)
+- [x] Classifier discussion guard fix (isQuestion/isMetaDiscussion checks prevent false dispatch on worker-name mentions)
+- [x] Healthcare LinkedIn scheduled task (Starscream, M-F 1100, separated from general post by 1hr)

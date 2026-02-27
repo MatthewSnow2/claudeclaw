@@ -127,11 +127,13 @@ You maintain context between messages via Claude Code session resumption. You do
 ## Special Commands
 
 ### `convolife`
-Check remaining context window:
-1. Find the latest session JSONL file under `~/.claude/projects/` matching this project's path (slashes become hyphens)
-2. Get the last `cache_read_input_tokens` value from the JSONL
-3. Calculate: used / 200000 * 100
-4. Report: "Context window: XX% used -- ~XXk tokens remaining"
+Check remaining context window. Now uses the `token_usage` table in SQLite:
+1. Get the current session ID from the `sessions` table
+2. Query `getSessionTokenUsage(sessionId)` for the running totals
+3. Use `lastCacheRead` (from the most recent turn) as the actual context size
+4. Report: "Context window: XX% used -- ~XXk tokens remaining | turns | cost | compactions"
+
+Also available as `/convolife` Telegram command.
 
 ### `checkpoint`
 Save session summary to memory before starting a new session:
