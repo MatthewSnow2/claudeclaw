@@ -111,14 +111,20 @@ export async function buildMemoryContext(
   chatId: string,
   userMessage: string,
 ): Promise<string> {
-  const seen = new Set<number>();
-  const seenVectorIds = new Set<number>();
+  const seenIds = new Set<number>();       // dedup within memories table (by row id)
+  const seenContent = new Set<string>();   // cross-table dedup (by normalized content)
   const lines: string[] = [];
+
+  /** Normalize content for cross-table dedup comparison. */
+  const normalizeContent = (s: string): string => s.trim().toLowerCase();
 
   // Layer 1: FTS5 keyword search
   const searched = searchMemories(chatId, userMessage, 3);
   for (const mem of searched) {
-    seen.add(mem.id);
+    const key = normalizeContent(mem.content);
+    if (seenContent.has(key)) continue;
+    seenIds.add(mem.id);
+    seenContent.add(key);
     touchMemory(mem.id);
     lines.push(`- ${mem.content} (${mem.sector})`);
   }
@@ -140,7 +146,9 @@ export async function buildMemoryContext(
           .slice(0, 3);
 
         for (const v of scored) {
-          seenVectorIds.add(v.id);
+          const key = normalizeContent(v.content);
+          if (seenContent.has(key)) continue;
+          seenContent.add(key);
           touchMemoryVector(v.id);
           lines.push(`- ${v.content} (vector)`);
         }
@@ -150,11 +158,14 @@ export async function buildMemoryContext(
     logger.debug({ err }, 'Vector search failed (graceful degradation)');
   }
 
-  // Layer 3: Recent memories (deduplicated against Layer 1)
+  // Layer 3: Recent memories (deduplicated against Layer 1 by id AND content)
   const recent = getRecentMemories(chatId, 5);
   for (const mem of recent) {
-    if (seen.has(mem.id)) continue;
-    seen.add(mem.id);
+    if (seenIds.has(mem.id)) continue;
+    const key = normalizeContent(mem.content);
+    if (seenContent.has(key)) continue;
+    seenIds.add(mem.id);
+    seenContent.add(key);
     touchMemory(mem.id);
     lines.push(`- ${mem.content} (${mem.sector})`);
   }

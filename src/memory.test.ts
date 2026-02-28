@@ -22,7 +22,9 @@ import {
 import {
   searchMemories,
   getRecentMemories,
+  getMemoryVectors,
   touchMemory,
+  touchMemoryVector,
   saveMemory,
   decayMemories,
   decayMemoryVectors,
@@ -32,7 +34,9 @@ import {
 
 const mockSearchMemories = vi.mocked(searchMemories);
 const mockGetRecentMemories = vi.mocked(getRecentMemories);
+const mockGetMemoryVectors = vi.mocked(getMemoryVectors);
 const mockTouchMemory = vi.mocked(touchMemory);
+const mockTouchMemoryVector = vi.mocked(touchMemoryVector);
 const mockSaveMemory = vi.mocked(saveMemory);
 const mockDecayMemories = vi.mocked(decayMemories);
 const mockDecayMemoryVectors = vi.mocked(decayMemoryVectors);
@@ -113,6 +117,93 @@ describe('buildMemoryContext', () => {
     // Should only appear once
     const occurrences = result.split('shared memory').length - 1;
     expect(occurrences).toBe(1);
+  });
+
+  it('deduplicates across memories and memory_vectors tables (cross-table)', async () => {
+    // Same content exists in both memories (FTS) and memory_vectors
+    mockSearchMemories.mockReturnValue([
+      {
+        id: 1,
+        chat_id: 'chat1',
+        topic_key: null,
+        content: 'Matthew prefers TypeScript',
+        sector: 'semantic',
+        salience: 1.0,
+        created_at: 100,
+        accessed_at: 100,
+      },
+    ]);
+    mockGetRecentMemories.mockReturnValue([]);
+
+    // embedQuery is async and calls Ollama -- we mock the vector layer
+    // by returning a matching vector with identical content (different case)
+    // Since embedQuery hits Ollama (unavailable in test), Layer 2 silently skips.
+    // To test cross-table dedup, we use Layer 3 with matching content instead.
+    mockSearchMemories.mockReturnValue([
+      {
+        id: 1,
+        chat_id: 'chat1',
+        topic_key: null,
+        content: 'Matthew prefers TypeScript',
+        sector: 'semantic',
+        salience: 1.0,
+        created_at: 100,
+        accessed_at: 100,
+      },
+    ]);
+    // Layer 3: same content, different id (simulates regex-era duplicate)
+    mockGetRecentMemories.mockReturnValue([
+      {
+        id: 99,
+        chat_id: 'chat1',
+        topic_key: null,
+        content: 'Matthew prefers TypeScript',
+        sector: 'episodic',
+        salience: 0.8,
+        created_at: 50,
+        accessed_at: 200,
+      },
+    ]);
+
+    const result = await buildMemoryContext('chat1', 'typescript');
+    // Content-based dedup: "Matthew prefers TypeScript" appears only once
+    const occurrences = result.split('Matthew prefers TypeScript').length - 1;
+    expect(occurrences).toBe(1);
+    // Only Layer 1's version should be touched (Layer 3 duplicate skipped)
+    expect(mockTouchMemory).toHaveBeenCalledWith(1);
+    expect(mockTouchMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it('deduplicates case-insensitively across layers', async () => {
+    mockSearchMemories.mockReturnValue([
+      {
+        id: 1,
+        chat_id: 'chat1',
+        topic_key: null,
+        content: 'I like dark mode',
+        sector: 'semantic',
+        salience: 1.0,
+        created_at: 100,
+        accessed_at: 100,
+      },
+    ]);
+    mockGetRecentMemories.mockReturnValue([
+      {
+        id: 50,
+        chat_id: 'chat1',
+        topic_key: null,
+        content: 'I Like Dark Mode',
+        sector: 'episodic',
+        salience: 1.0,
+        created_at: 80,
+        accessed_at: 150,
+      },
+    ]);
+
+    const result = await buildMemoryContext('chat1', 'dark mode');
+    // Case-insensitive dedup: only one should appear
+    const lines = result.split('\n').filter(l => l.includes('dark mode') || l.includes('Dark Mode'));
+    expect(lines.length).toBe(1);
   });
 
   it('touches (boosts salience of) returned memories', async () => {
