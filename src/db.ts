@@ -172,7 +172,7 @@ export function clearSession(chatId: string): void {
 // Telegram re-delivers pending updates after a 409 conflict restart,
 // so we need persistent tracking to avoid processing the same message twice.
 
-const DEDUP_TTL_SECONDS = 600; // 10 minutes — well beyond Telegram's retry window
+const DEDUP_TTL_SECONDS = 3600; // 1 hour — survives PM2 restart cycles and extended processing
 
 export function isMessageProcessed(messageId: number): boolean {
   const row = db

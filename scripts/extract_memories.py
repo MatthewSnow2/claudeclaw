@@ -15,6 +15,7 @@ Cron:
 
 import json
 import os
+import re
 import sqlite3
 import struct
 import sys
@@ -156,16 +157,50 @@ def parse_facts(raw: str) -> list[str]:
     return []
 
 
+# Patterns that indicate tool-echo spam or bot noise (mirrors bot.ts isToolEcho)
+SPAM_PATTERNS: list[re.Pattern] = [
+    re.compile(r"^Running: .+$"),
+    re.compile(r"^(Reading|Writing|Editing) \S+$"),
+    re.compile(r"^Searching (codebase|the web)\.\.\.\s*$"),
+    re.compile(r"^Searching: .+$"),
+    re.compile(r"^Fetching web content\.\.\.\s*$"),
+    re.compile(r"^Launching sub-agent\.\.\.\s*$"),
+    re.compile(r"^Done\.$"),
+    re.compile(r"^[A-Z][a-z]+: [A-Z][a-zA-Z ]+$"),
+    re.compile(r"^Worker process output\b"),
+    re.compile(r"^Standing by\b"),
+    re.compile(r"^Worker \w+ completed\b"),
+    re.compile(r"^Context window: \d+%"),
+]
+
+
+def is_spam(content: str) -> bool:
+    """Check if a message is tool-echo spam or bot noise."""
+    trimmed = content.strip()
+    if len(trimmed) < 5:
+        return True
+    if len(trimmed) > 200:
+        return False
+    return any(p.search(trimmed) for p in SPAM_PATTERNS)
+
+
 def format_turns(rows: list[dict]) -> str:
-    """Format conversation_log rows into readable conversation text."""
+    """Format conversation_log rows into readable conversation text.
+    Filters out spam/tool-echo messages before sending to Qwen."""
     lines = []
+    skipped = 0
     for row in rows:
         role = row["role"].upper()
         content = row["content"]
+        if is_spam(content):
+            skipped += 1
+            continue
         # Truncate very long messages to keep Qwen's context manageable
         if len(content) > 1000:
             content = content[:1000] + "... [truncated]"
         lines.append(f"{role}: {content}")
+    if skipped:
+        log(f"  Filtered {skipped} spam/noise messages from batch")
     return "\n\n".join(lines)
 
 
@@ -222,6 +257,19 @@ def run_extraction():
             conversation_text = format_turns(rows_as_dicts)
 
             log(f"Processing chat {chat_id}: {len(rows_as_dicts)} turns (log IDs {last_log_id + 1}..{max_id})")
+
+            # If all messages were filtered as spam, advance watermark without calling Qwen
+            if not conversation_text.strip():
+                log(f"  All {len(rows_as_dicts)} turns were spam -- advancing watermark to {max_id}")
+                now = int(time.time())
+                conn.execute(
+                    """INSERT OR REPLACE INTO extraction_state
+                       (chat_id, last_log_id, last_run_at, facts_total)
+                       VALUES (?, ?, ?, ?)""",
+                    (chat_id, max_id, now, facts_total),
+                )
+                conn.commit()
+                continue
 
             if DRY_RUN:
                 log(f"[DRY RUN] Would send {len(conversation_text)} chars to Qwen")

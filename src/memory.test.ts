@@ -175,59 +175,14 @@ describe('saveConversationTurn', () => {
     expect(mockLogConversationTurn).toHaveBeenCalledWith('chat1', 'assistant', 'Noted.', 'sess1');
   });
 
-  it('saves semantic memory for messages containing "I prefer"', () => {
+  it('logs without sessionId when not provided', () => {
+    saveConversationTurn('chat1', 'Hello there', 'Hi.');
+    expect(mockLogConversationTurn).toHaveBeenCalledWith('chat1', 'user', 'Hello there', undefined);
+    expect(mockLogConversationTurn).toHaveBeenCalledWith('chat1', 'assistant', 'Hi.', undefined);
+  });
+
+  it('does NOT call saveMemory (Phase 7 handles extraction)', () => {
     saveConversationTurn('chat1', 'I prefer TypeScript over JavaScript always', 'Noted.');
-    expect(mockSaveMemory).toHaveBeenCalledWith(
-      'chat1',
-      'I prefer TypeScript over JavaScript always',
-      'semantic',
-    );
-  });
-
-  it('saves semantic memory for messages containing "remember"', () => {
-    saveConversationTurn('chat1', 'Please remember that I like dark mode', 'Sure thing.');
-    expect(mockSaveMemory).toHaveBeenCalledWith(
-      'chat1',
-      'Please remember that I like dark mode',
-      'semantic',
-    );
-  });
-
-  it('saves semantic memory for messages containing "always"', () => {
-    saveConversationTurn('chat1', 'I always use vim for editing', 'Got it.');
-    expect(mockSaveMemory).toHaveBeenCalledWith(
-      'chat1',
-      'I always use vim for editing',
-      'semantic',
-    );
-  });
-
-  it('saves episodic memory for regular messages', () => {
-    saveConversationTurn('chat1', 'Can you help me refactor this code please?', 'Sure.');
-    expect(mockSaveMemory).toHaveBeenCalledWith(
-      'chat1',
-      'Can you help me refactor this code please?',
-      'episodic',
-    );
-  });
-
-  it('does NOT save very short messages (<=20 chars)', () => {
-    saveConversationTurn('chat1', 'short msg', 'ok');
-    expect(mockSaveMemory).not.toHaveBeenCalled();
-  });
-
-  it('does NOT save messages exactly 20 chars', () => {
-    saveConversationTurn('chat1', '12345678901234567890', 'ok');
-    expect(mockSaveMemory).not.toHaveBeenCalled();
-  });
-
-  it('saves messages that are 21 chars', () => {
-    saveConversationTurn('chat1', '123456789012345678901', 'ok');
-    expect(mockSaveMemory).toHaveBeenCalled();
-  });
-
-  it('does NOT save messages starting with /', () => {
-    saveConversationTurn('chat1', '/command with a long argument that is over 20 chars', 'done');
     expect(mockSaveMemory).not.toHaveBeenCalled();
   });
 });

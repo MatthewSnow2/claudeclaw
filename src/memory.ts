@@ -7,14 +7,11 @@ import {
   getRecentMemories,
   logConversationTurn,
   pruneConversationLog,
-  saveMemory,
   searchMemories,
   touchMemory,
   touchMemoryVector,
 } from './db.js';
 import { logger } from './logger.js';
-
-const SEMANTIC_SIGNALS = /\b(my|i am|i'm|i prefer|remember|always|never)\b/i;
 
 // Ollama config for query-time embedding
 const OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
@@ -168,15 +165,13 @@ export async function buildMemoryContext(
 }
 
 /**
- * Extract and save memorable facts from a conversation turn.
+ * Log a conversation turn and persist to conversation_log.
  * Called AFTER Claude responds, with both user message and Claude's response.
  *
- * Strategy:
- * - Always log both user and assistant messages to conversation_log (for /respin).
- * - Save user messages containing key signals (my, I am, I prefer, remember,
- *   always, never) as 'semantic' sector (long-lived).
- * - Save other meaningful messages as 'episodic' sector (short decay).
- * - Skip short or command-like messages for memory extraction.
+ * Memory extraction is handled by Phase 7 (extract_memories.py via Qwen),
+ * which runs every 30 minutes on cron and produces higher-quality facts
+ * than regex matching. This function only logs the raw conversation so
+ * Phase 7 has material to work with.
  */
 export function saveConversationTurn(
   chatId: string,
@@ -184,18 +179,9 @@ export function saveConversationTurn(
   claudeResponse: string,
   sessionId?: string,
 ): void {
-  // Always log full conversation to conversation_log (for /respin)
+  // Log full conversation to conversation_log (for /respin and Phase 7 extraction)
   logConversationTurn(chatId, 'user', userMessage, sessionId);
   logConversationTurn(chatId, 'assistant', claudeResponse, sessionId);
-
-  // Skip short or command-like messages for memory extraction
-  if (userMessage.length <= 20 || userMessage.startsWith('/')) return;
-
-  if (SEMANTIC_SIGNALS.test(userMessage)) {
-    saveMemory(chatId, userMessage, 'semantic');
-  } else {
-    saveMemory(chatId, userMessage, 'episodic');
-  }
 }
 
 /**

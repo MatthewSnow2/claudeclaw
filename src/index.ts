@@ -116,15 +116,16 @@ async function main(): Promise<void> {
     process.on('SIGTERM', () => void shutdown());
 
     try {
-      // Drop pending updates on retry to prevent re-processing messages
-      // that were already handled before the 409 cycle.
-      const dropPending = attempt > 1;
-      await bot.api.deleteWebhook({ drop_pending_updates: dropPending });
-      if (dropPending) {
-        logger.info('Dropped pending updates after 409 recovery');
-      }
+      // ALWAYS drop pending updates on startup. If the previous process
+      // crashed mid-response (sent to Telegram but didn't finish logging),
+      // the pending update would be re-processed with different context,
+      // producing a duplicate/conflicting response. The SQLite dedup catches
+      // same message_id replays, but only if markMessageProcessed() completed
+      // before the crash. Dropping pending is the safer default.
+      await bot.api.deleteWebhook({ drop_pending_updates: true });
+      logger.info({ attempt }, 'Dropped pending updates on startup');
 
-      logger.info({ attempt, dropPending }, 'Starting EA-Claude...');
+      logger.info({ attempt }, 'Starting EA-Claude...');
 
       await bot.start({
         onStart: (botInfo) => {

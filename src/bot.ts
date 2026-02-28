@@ -75,6 +75,39 @@ function isDuplicate(messageId: number): boolean {
 }
 
 /**
+ * Per-chat concurrency lock.
+ * Ensures only one message is actively being processed per chat at a time.
+ * Without this, Grammy's async handlers allow overlapping Claude API calls
+ * for the same chat, producing duplicate or conflicting responses.
+ *
+ * If a second message arrives while the first is still processing, it waits
+ * for the first to finish before starting.
+ */
+const chatLocks = new Map<string, Promise<void>>();
+
+async function withChatLock<T>(chatId: string, fn: () => Promise<T>): Promise<T> {
+  // Wait for any existing lock on this chat
+  const existing = chatLocks.get(chatId);
+  let release: () => void;
+  const lock = new Promise<void>((resolve) => { release = resolve; });
+  chatLocks.set(chatId, lock);
+
+  if (existing) {
+    await existing;
+  }
+
+  try {
+    return await fn();
+  } finally {
+    release!();
+    // Clean up if we're still the current lock holder
+    if (chatLocks.get(chatId) === lock) {
+      chatLocks.delete(chatId);
+    }
+  }
+}
+
+/**
  * Escape HTML special characters for safe Telegram output.
  */
 function escapeHtml(s: string): string {
@@ -488,7 +521,7 @@ export function createBot(): Bot {
     // Clear old session and send the respin as a new message
     clearSession(chatIdStr);
     await ctx.reply('Replaying last 20 turns into fresh session...');
-    await handleMessage(ctx, respinPrompt, /* skipLog */ true);
+    await withChatLock(chatIdStr, () => handleMessage(ctx, respinPrompt, /* skipLog */ true));
   });
 
   // /convolife — show context window usage from token_usage table
@@ -584,7 +617,7 @@ export function createBot(): Bot {
       const cmd = text.split(/[\s@]/)[0].toLowerCase();
       if (OWN_COMMANDS.has(cmd)) return; // already handled by bot.command() above
     }
-    await handleMessage(ctx, text);
+    await withChatLock(ctx.chat!.id.toString(), () => handleMessage(ctx, text));
   });
 
   // Voice messages — real transcription via Groq Whisper
@@ -619,7 +652,7 @@ export function createBot(): Bot {
       const localPath = await downloadTelegramFile(TELEGRAM_BOT_TOKEN, fileId, UPLOADS_DIR);
       const transcribed = await transcribeAudio(localPath);
       clearInterval(typingInterval);
-      await handleMessage(ctx, `[Voice transcribed]: ${transcribed}`);
+      await withChatLock(ctx.chat!.id.toString(), () => handleMessage(ctx, `[Voice transcribed]: ${transcribed}`));
     } catch (err) {
       clearInterval(typingInterval);
       logger.error({ err }, 'Voice transcription failed');
@@ -654,7 +687,7 @@ export function createBot(): Bot {
       const localPath = await downloadMedia(TELEGRAM_BOT_TOKEN, photo.file_id, 'photo.jpg');
       clearInterval(typingInterval);
       const msg = buildPhotoMessage(localPath, ctx.message.caption ?? undefined);
-      await handleMessage(ctx, msg);
+      await withChatLock(ctx.chat!.id.toString(), () => handleMessage(ctx, msg));
     } catch (err) {
       clearInterval(typingInterval);
       logger.error({ err }, 'Photo download failed');
@@ -690,7 +723,7 @@ export function createBot(): Bot {
       const localPath = await downloadMedia(TELEGRAM_BOT_TOKEN, doc.file_id, filename);
       clearInterval(typingInterval);
       const msg = buildDocumentMessage(localPath, filename, ctx.message.caption ?? undefined);
-      await handleMessage(ctx, msg);
+      await withChatLock(ctx.chat!.id.toString(), () => handleMessage(ctx, msg));
     } catch (err) {
       clearInterval(typingInterval);
       logger.error({ err }, 'Document download failed');
@@ -726,7 +759,7 @@ export function createBot(): Bot {
       const localPath = await downloadMedia(TELEGRAM_BOT_TOKEN, video.file_id, filename);
       clearInterval(typingInterval);
       const msg = buildVideoMessage(localPath, ctx.message.caption ?? undefined);
-      await handleMessage(ctx, msg);
+      await withChatLock(ctx.chat!.id.toString(), () => handleMessage(ctx, msg));
     } catch (err) {
       clearInterval(typingInterval);
       logger.error({ err }, 'Video download failed');
@@ -761,7 +794,7 @@ export function createBot(): Bot {
       const localPath = await downloadMedia(TELEGRAM_BOT_TOKEN, vn.file_id, 'video_note.mp4');
       clearInterval(typingInterval);
       const msg = buildVideoMessage(localPath);
-      await handleMessage(ctx, msg);
+      await withChatLock(ctx.chat!.id.toString(), () => handleMessage(ctx, msg));
     } catch (err) {
       clearInterval(typingInterval);
       logger.error({ err }, 'Video note download failed');
