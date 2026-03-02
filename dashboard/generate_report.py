@@ -33,6 +33,7 @@ METROPLEX_DB = PROJECTS_DIR / "metroplex" / "data" / "metroplex.db"
 CLAUDECLAW_DB = PROJECTS_DIR / "claudeclaw" / "store" / "claudeclaw.db"
 IDEAFORGE_DB = PROJECTS_DIR / "ideaforge" / "data" / "ideaforge.db"
 PERSONA_METRICS_DB = ST_FACTORY_DIR / "persona_metrics.db"
+STARSCREAM_DB = PROJECTS_DIR / "claudeclaw" / "store" / "starscream_analytics.db"
 
 # PM2 process name to agent identity mapping
 PM2_TO_AGENT = {
@@ -735,6 +736,82 @@ def get_hll_data():
 
 
 # ============================================================================
+# Sky-Lynx HIL (injected into Tab 3 HLL data)
+# ============================================================================
+
+SKY_LYNX_STATE = Path.home() / ".sky-lynx"
+SKY_LYNX_REPORTS = Path.home() / "documentation" / "improvements"
+
+
+def get_sky_lynx_hil_data():
+    """Check Sky-Lynx recommendations for pending human review items."""
+    result = {
+        "has_pending": False,
+        "pending_count": 0,
+        "auto_applied_count": 0,
+        "total_recs": 0,
+        "budget_remaining": 3,
+        "last_analysis": None,
+        "report_date": None,
+    }
+
+    # Find latest recommendations sidecar
+    try:
+        rec_files = sorted(SKY_LYNX_REPORTS.glob("*-sky-lynx-recommendations.json"))
+    except Exception:
+        rec_files = []
+
+    if not rec_files:
+        return result
+
+    latest_rec = rec_files[-1]
+    result["report_date"] = latest_rec.name[:10]  # YYYY-MM-DD prefix
+
+    try:
+        recs = json.loads(latest_rec.read_text())
+        if not isinstance(recs, list):
+            return result
+        result["total_recs"] = len(recs)
+
+        # Extract session_id from recommendations
+        session_ids = {r.get("session_id") for r in recs if r.get("session_id")}
+    except Exception:
+        return result
+
+    # Read audit trail for auto-applied count
+    audit_file = SKY_LYNX_STATE / "audit.jsonl"
+    applied_count = 0
+    if audit_file.exists():
+        try:
+            for line in audit_file.read_text().strip().splitlines():
+                entry = json.loads(line)
+                if entry.get("applied") and entry.get("session_id") in session_ids:
+                    applied_count += 1
+            result["last_analysis"] = entry.get("timestamp")
+        except Exception:
+            pass
+
+    result["auto_applied_count"] = applied_count
+
+    # Read cooldown state for budget
+    cooldown_file = SKY_LYNX_STATE / "cooldown.json"
+    if cooldown_file.exists():
+        try:
+            cooldown = json.loads(cooldown_file.read_text())
+            used = cooldown.get("applies_this_week", 0)
+            limit = cooldown.get("weekly_limit", 3)
+            result["budget_remaining"] = max(0, limit - used)
+        except Exception:
+            pass
+
+    # Compute pending
+    result["pending_count"] = max(0, result["total_recs"] - applied_count)
+    result["has_pending"] = result["pending_count"] > 0
+
+    return result
+
+
+# ============================================================================
 # ============================================================================
 # Tab 5: Pipeline
 # ============================================================================
@@ -991,6 +1068,337 @@ def get_christensen_data():
             idb.close()
         except Exception:
             pass
+
+    return result
+
+
+# ============================================================================
+# Social Analytics (Starscream)
+# ============================================================================
+
+def get_social_analytics():
+    """Query starscream_analytics.db for social media metrics. Returns structured JSON for the Strategy tab."""
+    result = {
+        "kpi": {
+            "total_impressions_30d": 0,
+            "avg_engagement_rate_30d": 0.0,
+            "follower_count": 0,
+            "follower_change_7d": 0,
+            "post_count_30d": 0,
+            "top_engagement_rate": 0.0,
+        },
+        "top_posts_7d": [],
+        "top_posts_30d": [],
+        "best_time_heatmap": [],
+        "posting_frequency": {
+            "current_posts_per_week": 0.0,
+            "optimal_posts_per_week": 0.0,
+            "correlation": 0.0,
+        },
+        "follower_trend": [],
+        "content_decay_recent": [],
+        "content_insights": [],
+        "daily_trend": [],
+    }
+
+    if not STARSCREAM_DB.exists():
+        return result
+
+    try:
+        db = sqlite3.connect(str(STARSCREAM_DB), timeout=5)
+        db.row_factory = sqlite3.Row
+    except Exception:
+        return result
+
+    now = datetime.now()
+    cutoff_30d = (now - timedelta(days=30)).isoformat()
+    cutoff_7d = (now - timedelta(days=7)).isoformat()
+
+    # --- KPIs from daily_aggregate (30d) ---
+    try:
+        kpi_row = db.execute("""
+            SELECT
+                COALESCE(SUM(total_impressions), 0) as total_imp,
+                COALESCE(AVG(avg_engagement_rate), 0.0) as avg_eng,
+                COALESCE(SUM(total_posts), 0) as post_count
+            FROM daily_aggregate
+            WHERE date >= ?
+        """, (cutoff_30d[:10],)).fetchone()
+        if kpi_row:
+            result["kpi"]["total_impressions_30d"] = kpi_row["total_imp"]
+            result["kpi"]["avg_engagement_rate_30d"] = round(kpi_row["avg_eng"], 4)
+            result["kpi"]["post_count_30d"] = kpi_row["post_count"]
+    except Exception:
+        pass
+
+    # Follower count (latest daily_aggregate)
+    try:
+        fc_row = db.execute(
+            "SELECT follower_count FROM daily_aggregate ORDER BY date DESC LIMIT 1"
+        ).fetchone()
+        if fc_row:
+            result["kpi"]["follower_count"] = fc_row["follower_count"]
+    except Exception:
+        pass
+
+    # Follower change over 7 days
+    try:
+        fc_7d = db.execute("""
+            SELECT
+                (SELECT total_followers FROM follower_metrics ORDER BY collected_at DESC LIMIT 1)
+                -
+                COALESCE(
+                    (SELECT total_followers FROM follower_metrics WHERE collected_at <= ? ORDER BY collected_at DESC LIMIT 1),
+                    (SELECT total_followers FROM follower_metrics ORDER BY collected_at ASC LIMIT 1)
+                ) as change_7d
+        """, (cutoff_7d,)).fetchone()
+        if fc_7d and fc_7d["change_7d"] is not None:
+            result["kpi"]["follower_change_7d"] = fc_7d["change_7d"]
+    except Exception:
+        pass
+
+    # Top engagement rate (30d, from post_metrics with latest snapshot per post)
+    try:
+        top_eng = db.execute("""
+            SELECT MAX(engagement_rate) as top_er
+            FROM post_metrics
+            WHERE collected_at >= ?
+        """, (cutoff_30d,)).fetchone()
+        if top_eng and top_eng["top_er"] is not None:
+            result["kpi"]["top_engagement_rate"] = round(top_eng["top_er"], 4)
+    except Exception:
+        pass
+
+    # --- Top Posts 7d (top 5 by engagement, latest snapshot per post) ---
+    try:
+        top7 = db.execute("""
+            SELECT p.id, p.content_preview, p.published_at, p.likes, p.comments,
+                   p.shares, p.impressions, p.engagement_rate
+            FROM post_metrics p
+            INNER JOIN (
+                SELECT id, MAX(collected_at) as max_collected
+                FROM post_metrics
+                WHERE published_at >= ?
+                GROUP BY id
+            ) latest ON p.id = latest.id AND p.collected_at = latest.max_collected
+            ORDER BY p.engagement_rate DESC
+            LIMIT 5
+        """, (cutoff_7d,)).fetchall()
+        for row in top7:
+            result["top_posts_7d"].append({
+                "id": str(row["id"]),
+                "content_preview": row["content_preview"] or "",
+                "published_at": row["published_at"] or "",
+                "likes": row["likes"] or 0,
+                "comments": row["comments"] or 0,
+                "shares": row["shares"] or 0,
+                "impressions": row["impressions"] or 0,
+                "engagement_rate": round(row["engagement_rate"] or 0.0, 4),
+            })
+    except Exception:
+        pass
+
+    # --- Top Posts 30d (top 5 by engagement, latest snapshot per post) ---
+    try:
+        top30 = db.execute("""
+            SELECT p.id, p.content_preview, p.published_at, p.likes, p.comments,
+                   p.shares, p.impressions, p.engagement_rate
+            FROM post_metrics p
+            INNER JOIN (
+                SELECT id, MAX(collected_at) as max_collected
+                FROM post_metrics
+                WHERE published_at >= ?
+                GROUP BY id
+            ) latest ON p.id = latest.id AND p.collected_at = latest.max_collected
+            ORDER BY p.engagement_rate DESC
+            LIMIT 5
+        """, (cutoff_30d,)).fetchall()
+        for row in top30:
+            result["top_posts_30d"].append({
+                "id": str(row["id"]),
+                "content_preview": row["content_preview"] or "",
+                "published_at": row["published_at"] or "",
+                "likes": row["likes"] or 0,
+                "comments": row["comments"] or 0,
+                "shares": row["shares"] or 0,
+                "impressions": row["impressions"] or 0,
+                "engagement_rate": round(row["engagement_rate"] or 0.0, 4),
+            })
+    except Exception:
+        pass
+
+    # --- Best Time Heatmap (from content_insights best_time entries) ---
+    try:
+        ci_exists = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='content_insights'"
+        ).fetchone()
+        if ci_exists:
+            bt_rows = db.execute("""
+                SELECT insight_key, insight_value, metric_value, sample_size
+                FROM content_insights
+                WHERE insight_type = 'best_time'
+                ORDER BY generated_at DESC, metric_value DESC
+            """).fetchall()
+            seen_keys = set()
+            for row in bt_rows:
+                key = row["insight_key"]
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                try:
+                    detail = json.loads(row["insight_value"])
+                except Exception:
+                    continue
+                result["best_time_heatmap"].append({
+                    "day": detail.get("day", ""),
+                    "hour": detail.get("hour", 0),
+                    "score": round(detail.get("avg_engagement", 0), 4),
+                    "impressions": 0,
+                    "engagement_rate": round(detail.get("avg_engagement", 0), 4),
+                    "post_count": detail.get("post_count", 0),
+                })
+    except Exception:
+        pass
+
+    # --- Posting Frequency (from posting_frequency, most recent) ---
+    try:
+        table_exists = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='posting_frequency'"
+        ).fetchone()
+        if table_exists:
+            pf_row = db.execute("""
+                SELECT current_posts_per_week, optimal_posts_per_week, correlation
+                FROM posting_frequency
+                ORDER BY collected_at DESC
+                LIMIT 1
+            """).fetchone()
+            if pf_row:
+                result["posting_frequency"] = {
+                    "current_posts_per_week": round(pf_row["current_posts_per_week"] or 0.0, 2),
+                    "optimal_posts_per_week": round(pf_row["optimal_posts_per_week"] or 0.0, 2),
+                    "correlation": round(pf_row["correlation"] or 0.0, 4),
+                }
+    except Exception:
+        pass
+
+    # --- Follower Trend (last 30 data points) ---
+    try:
+        ft_rows = db.execute("""
+            SELECT collected_at, total_followers, new_followers_24h
+            FROM follower_metrics
+            ORDER BY collected_at DESC
+            LIMIT 30
+        """).fetchall()
+        for row in ft_rows:
+            result["follower_trend"].append({
+                "date": row["collected_at"],
+                "total": row["total_followers"] or 0,
+                "new_24h": row["new_followers_24h"] or 0,
+            })
+        # Reverse so oldest is first (chronological order)
+        result["follower_trend"].reverse()
+    except Exception:
+        pass
+
+    # --- Content Decay Recent (last 5 posts with decay data) ---
+    try:
+        table_exists = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='content_decay'"
+        ).fetchone()
+        if table_exists:
+            # Get distinct post_ids with decay data, most recent first
+            decay_posts = db.execute("""
+                SELECT DISTINCT cd.post_id, pm.content_preview
+                FROM content_decay cd
+                LEFT JOIN post_metrics pm ON cd.post_id = pm.id
+                    AND pm.collected_at = (SELECT MAX(collected_at) FROM post_metrics WHERE id = cd.post_id)
+                ORDER BY cd.post_id DESC
+                LIMIT 5
+            """).fetchall()
+            for dp in decay_posts:
+                post_id = dp["post_id"]
+                preview = dp["content_preview"] or ""
+                # Get decay points for this post
+                decay_points = db.execute("""
+                    SELECT hours_since_publish, cumulative_impressions, cumulative_engagement
+                    FROM content_decay
+                    WHERE post_id = ?
+                    ORDER BY hours_since_publish ASC
+                """, (post_id,)).fetchall()
+                points = []
+                for pt in decay_points:
+                    points.append({
+                        "hours": pt["hours_since_publish"] or 0,
+                        "impressions": pt["cumulative_impressions"] or 0,
+                        "engagement": pt["cumulative_engagement"] or 0,
+                    })
+                result["content_decay_recent"].append({
+                    "post_id": str(post_id),
+                    "content_preview": preview,
+                    "decay_points": points,
+                })
+    except Exception:
+        pass
+
+    # --- Content Insights (from content_insights table, most recent analysis) ---
+    try:
+        table_exists = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='content_insights'"
+        ).fetchone()
+        if table_exists:
+            latest_date = db.execute(
+                "SELECT MAX(generated_at) as latest FROM content_insights"
+            ).fetchone()
+            if latest_date and latest_date["latest"]:
+                # Get the date prefix for the latest analysis run
+                latest_prefix = latest_date["latest"][:10]
+                ci_rows = db.execute("""
+                    SELECT insight_type, insight_key, insight_value, metric_value, sample_size
+                    FROM content_insights
+                    WHERE generated_at LIKE ?
+                    ORDER BY metric_value DESC
+                """, (f"{latest_prefix}%",)).fetchall()
+                for row in ci_rows:
+                    detail = {}
+                    try:
+                        detail = json.loads(row["insight_value"]) if row["insight_value"] else {}
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                    result["content_insights"].append({
+                        "insight_type": row["insight_type"] or "",
+                        "metric_name": row["insight_key"] or "",
+                        "metric_value": round(row["metric_value"] or 0.0, 4),
+                        "detail": detail,
+                        "sample_size": row["sample_size"] or 0,
+                    })
+    except Exception:
+        pass
+
+    # --- Daily Trend (last 30 days from daily_aggregate) ---
+    try:
+        dt_rows = db.execute("""
+            SELECT date, total_impressions, total_likes, total_comments, avg_engagement_rate
+            FROM daily_aggregate
+            ORDER BY date DESC
+            LIMIT 30
+        """).fetchall()
+        for row in dt_rows:
+            result["daily_trend"].append({
+                "date": row["date"],
+                "impressions": row["total_impressions"] or 0,
+                "likes": row["total_likes"] or 0,
+                "comments": row["total_comments"] or 0,
+                "engagement_rate": round(row["avg_engagement_rate"] or 0.0, 4),
+            })
+        # Reverse so oldest is first (chronological order)
+        result["daily_trend"].reverse()
+    except Exception:
+        pass
+
+    try:
+        db.close()
+    except Exception:
+        pass
 
     return result
 
@@ -1422,8 +1830,29 @@ def get_soundwave_recommendations():
 # Timeline + Report Generation
 # ============================================================================
 
+def count_daily_commits():
+    """Count git commits made today across all tracked projects."""
+    total = 0
+    today_start = datetime.now().strftime("%Y-%m-%d 00:00:00")
+    for project in GIT_PROJECTS:
+        repo = PROJECTS_DIR / project
+        if not (repo / ".git").exists():
+            continue
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(repo), "log", "--oneline", f"--since={today_start}"],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                lines = [l for l in result.stdout.strip().split("\n") if l]
+                total += len(lines)
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+    return total
+
+
 def update_timeline(completed_items):
-    """Update timeline.json with today's completed count."""
+    """Update timeline.json with today's completed count (git commits)."""
     today = datetime.now().strftime("%Y-%m-%d")
     day_name = datetime.now().strftime("%a")
 
@@ -1476,7 +1905,9 @@ def generate():
     # Gather v3 tab data
     agent_data = get_agent_data()
     hll_data = get_hll_data()
+    hll_data["sky_lynx_hil"] = get_sky_lynx_hil_data()
     christensen_data = get_christensen_data()
+    christensen_data["social_analytics"] = get_social_analytics()
     pipeline_tab_data = get_pipeline_data()
 
     report = {
@@ -1514,13 +1945,9 @@ def generate():
         }
     }
 
-    # Count completed items for timeline
-    ok_count = sum(
-        1 for s in report["sections"].values()
-        for i in s["items"]
-        if i["status"] == "ok"
-    )
-    update_timeline(ok_count)
+    # Count daily git commits as the productivity metric for the timeline
+    daily_commits = count_daily_commits()
+    update_timeline(daily_commits)
 
     # Write dated file
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
