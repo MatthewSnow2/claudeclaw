@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Dashboard Report Generator
-Produces structured JSON from live system state for the Data Dashboard.
-Called by scheduled tasks (morning 0800, evening 1600).
+EAC Command Center Report Generator (v3)
+Produces structured JSON from live system state for the 4-tab dashboard.
+Called by scheduled tasks (morning 0800, evening 1600) or cron (every 5 min).
 
 Usage:
   python3 generate_report.py              # Generates report + updates latest.json
@@ -13,8 +13,10 @@ Usage:
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -28,6 +30,19 @@ ST_FACTORY_RECS = ST_FACTORY_DIR / "improvement_recommendations.jsonl"
 ST_FACTORY_PATCHES = ST_FACTORY_DIR / "persona_patches.jsonl"
 ST_FACTORY_SIGNALS = ST_FACTORY_DIR / "research_signals.jsonl"
 METROPLEX_DB = PROJECTS_DIR / "metroplex" / "data" / "metroplex.db"
+CLAUDECLAW_DB = PROJECTS_DIR / "claudeclaw" / "store" / "claudeclaw.db"
+IDEAFORGE_DB = PROJECTS_DIR / "ideaforge" / "data" / "ideaforge.db"
+PERSONA_METRICS_DB = ST_FACTORY_DIR / "persona_metrics.db"
+
+# PM2 process name to agent identity mapping
+PM2_TO_AGENT = {
+    "ea-claude": {"agent_id": "data", "role": "Coordinator"},
+    "ea-claude-default": {"agent_id": "redshirt", "role": "General Worker"},
+    "ea-claude-starscream": {"agent_id": "starscream", "role": "Social Media"},
+    "ea-claude-ravage": {"agent_id": "ravage", "role": "Coding"},
+    "ea-claude-soundwave": {"agent_id": "soundwave", "role": "Research & Analysis"},
+    "ea-claude-astrotrain": {"agent_id": "astrotrain", "role": "DSP/SCM Simulation"},
+}
 
 # Projects to check for git status
 GIT_PROJECTS = [
@@ -54,6 +69,935 @@ def run(cmd, timeout=10):
     except Exception:
         return ""
 
+
+def query_external_db(db_path, query_fn):
+    """Safely query an external database. Returns None if unavailable."""
+    if not Path(db_path).exists():
+        return None
+    try:
+        db = sqlite3.connect(str(db_path), timeout=5)
+        db.row_factory = sqlite3.Row
+        result = query_fn(db)
+        db.close()
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ============================================================================
+# Tab 1: Agent Overview
+# ============================================================================
+
+def get_agent_data():
+    """Gather agent topology data for Tab 1."""
+    result = {
+        "pm2_processes": [],
+        "queue_stats": {},
+        "metroplex": None,
+        "scheduled_tasks": [],
+        "st_metro_pipeline": {},
+    }
+
+    # --- PM2 Process Status ---
+    pm2_out = run("pm2 jlist 2>/dev/null")
+    if pm2_out:
+        try:
+            for proc in json.loads(pm2_out):
+                name = proc.get("name", "")
+                if name in PM2_TO_AGENT:
+                    pm2_env = proc.get("pm2_env", {})
+                    monit = proc.get("monit", {})
+                    result["pm2_processes"].append({
+                        "name": name,
+                        "agent_id": PM2_TO_AGENT[name]["agent_id"],
+                        "role": PM2_TO_AGENT[name]["role"],
+                        "status": pm2_env.get("status", "unknown"),
+                        "uptime_seconds": int((time.time() * 1000 - pm2_env.get("pm_uptime", 0)) / 1000) if pm2_env.get("pm_uptime") else 0,
+                        "restarts": pm2_env.get("restart_time", 0),
+                        "memory_mb": round(monit.get("memory", 0) / 1024 / 1024, 1),
+                    })
+        except json.JSONDecodeError:
+            pass
+
+    # --- Dispatch Queue Stats (per worker_type) ---
+    if CLAUDECLAW_DB.exists():
+        try:
+            db = sqlite3.connect(str(CLAUDECLAW_DB), timeout=5)
+            now_epoch = int(time.time())
+            day_ago = now_epoch - 86400
+
+            for wtype in ["default", "starscream", "ravage", "soundwave", "astrotrain"]:
+                queued = db.execute(
+                    "SELECT COUNT(*) FROM dispatch_queue WHERE worker_type=? AND status='queued'", (wtype,)
+                ).fetchone()[0]
+                running = db.execute(
+                    "SELECT COUNT(*) FROM dispatch_queue WHERE worker_type=? AND status='running'", (wtype,)
+                ).fetchone()[0]
+                completed_24h = db.execute(
+                    "SELECT COUNT(*) FROM dispatch_queue WHERE worker_type=? AND status='completed' AND completed_at>?",
+                    (wtype, day_ago)
+                ).fetchone()[0]
+                failed_24h = db.execute(
+                    "SELECT COUNT(*) FROM dispatch_queue WHERE worker_type=? AND status='failed' AND completed_at>?",
+                    (wtype, day_ago)
+                ).fetchone()[0]
+                last_completed = db.execute(
+                    "SELECT MAX(completed_at) FROM dispatch_queue WHERE worker_type=? AND status='completed'", (wtype,)
+                ).fetchone()[0]
+                avg_duration = db.execute(
+                    "SELECT AVG(completed_at - started_at) FROM dispatch_queue WHERE worker_type=? AND status='completed' AND started_at IS NOT NULL AND completed_at IS NOT NULL",
+                    (wtype,)
+                ).fetchone()[0]
+
+                total_completed = db.execute(
+                    "SELECT COUNT(*) FROM dispatch_queue WHERE worker_type=? AND status='completed'", (wtype,)
+                ).fetchone()[0]
+                total_failed = db.execute(
+                    "SELECT COUNT(*) FROM dispatch_queue WHERE worker_type=? AND status='failed'", (wtype,)
+                ).fetchone()[0]
+
+                result["queue_stats"][wtype] = {
+                    "queued": queued,
+                    "running": running,
+                    "completed_24h": completed_24h,
+                    "failed_24h": failed_24h,
+                    "last_completed_at": last_completed,
+                    "avg_duration_seconds": round(avg_duration) if avg_duration else None,
+                    "total_completed": total_completed,
+                    "total_failed": total_failed,
+                }
+
+            # --- Scheduled Tasks ---
+            tasks = db.execute("SELECT id, prompt, schedule, status, next_run FROM scheduled_tasks").fetchall()
+            for t in tasks:
+                result["scheduled_tasks"].append({
+                    "id": t[0],
+                    "prompt_preview": t[1][:60] + ("..." if len(t[1]) > 60 else ""),
+                    "schedule": t[2],
+                    "status": t[3],
+                    "next_run": t[4],
+                })
+
+            db.close()
+        except Exception:
+            pass
+
+    # --- Metroplex Data (cross-DB, guarded) ---
+    result["metroplex"] = get_metroplex_status()
+
+    # --- ST Metro Pipeline Health ---
+    result["st_metro_pipeline"] = get_pipeline_health()
+
+    # --- Tier 2: Scheduled Infrastructure (cron + systemd) ---
+    result["tier2_scheduled"] = get_tier2_data()
+
+    # --- Tier 3: On-Demand & Pipeline Components ---
+    result["tier3_components"] = get_tier3_data()
+
+    return result
+
+
+def get_tier2_data():
+    """Gather Tier 2 infrastructure data: systemd services and cron jobs."""
+    result = {"services": [], "cron_jobs": []}
+
+    # --- Systemd Services ---
+    for svc_name, label in [("metroplex", "Metroplex")]:
+        # Check user-level systemd first, fall back to system-level
+        active = run(f"systemctl --user is-active {svc_name} 2>/dev/null") == "active"
+        if not active:
+            active = run(f"systemctl is-active {svc_name} 2>/dev/null") == "active"
+        enabled = run(f"systemctl --user is-enabled {svc_name} 2>/dev/null") == "enabled"
+        if not enabled:
+            enabled = run(f"systemctl is-enabled {svc_name} 2>/dev/null") == "enabled"
+        result["services"].append({
+            "name": label,
+            "service": svc_name,
+            "active": active,
+            "enabled": enabled,
+        })
+
+    # --- Cron Jobs ---
+    cron_out = run("crontab -l 2>/dev/null")
+    cron_defs = {
+        "sky-lynx": {"label": "Sky-Lynx Analyzer", "role": "Weekly self-improvement"},
+        "generate_report": {"label": "Dashboard Reporter", "role": "Report generation"},
+        "extract_memories": {"label": "Memory Extraction", "role": "Semantic memory pipeline"},
+        "watchdog": {"label": "Watchdog", "role": "Service health monitor"},
+        "send_report.*morning": {"label": "Morning Report", "role": "0800 daily briefing"},
+        "send_report.*evening": {"label": "Evening Report", "role": "1600 daily review"},
+        "starscream_analytics": {"label": "Starscream Analytics", "role": "LinkedIn analytics"},
+        "inbox_triage": {"label": "Inbox Triage", "role": "Message prioritization"},
+        "retrospective": {"label": "Weekly Retrospective", "role": "Sunday review cycle"},
+        "research-agents": {"label": "Research Agents", "role": "Market signal collection"},
+        "updater.sh": {"label": "NVIDIA SDK Updater", "role": "Driver updates"},
+    }
+    for line in cron_out.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 5)
+        if len(parts) < 6:
+            continue
+        schedule = " ".join(parts[:5])
+        command = parts[5]
+        matched = False
+        for pattern, info in cron_defs.items():
+            if re.search(pattern, command):
+                result["cron_jobs"].append({
+                    "label": info["label"],
+                    "role": info["role"],
+                    "schedule": schedule,
+                    "active": True,
+                })
+                matched = True
+                break
+        if not matched:
+            # Unknown cron job -- include with truncated command
+            result["cron_jobs"].append({
+                "label": os.path.basename(command.split()[0]) if command else "Unknown",
+                "role": command[:60],
+                "schedule": schedule,
+                "active": True,
+            })
+
+    # --- System cron.d files (e.g. research-agents) ---
+    # Format: schedule(5) username command
+    crond_defs = {
+        "arxiv tool-monitor": {"label": "Research: Arxiv + Tools", "role": "Daily arxiv & tool-monitor scan"},
+        "domain-watch": {"label": "Research: Domain Watch", "role": "Domain signal collection (every 3 days)"},
+        "idea-surfacer": {"label": "Research: Idea Surfacer", "role": "Weekly idea synthesis (Sat before Sky-Lynx)"},
+    }
+    crond_file = Path("/etc/cron.d/research-agents")
+    if crond_file.exists():
+        try:
+            crond_out = crond_file.read_text()
+            for line in crond_out.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # cron.d format: min hour dom mon dow user command
+                parts = line.split(None, 6)
+                if len(parts) < 7:
+                    continue
+                schedule = " ".join(parts[:5])
+                command = parts[6]  # skip parts[5] (username)
+                matched = False
+                for pattern, info in crond_defs.items():
+                    if pattern in command:
+                        result["cron_jobs"].append({
+                            "label": info["label"],
+                            "role": info["role"],
+                            "schedule": schedule,
+                            "active": True,
+                            "source": "cron.d",
+                        })
+                        matched = True
+                        break
+                if not matched:
+                    result["cron_jobs"].append({
+                        "label": "Research: " + os.path.basename(command.split()[0]),
+                        "role": command[:60],
+                        "schedule": schedule,
+                        "active": True,
+                        "source": "cron.d",
+                    })
+        except PermissionError:
+            pass  # Can't read cron.d file, skip
+
+    return result
+
+
+def get_tier3_data():
+    """Gather Tier 3 on-demand component data: install status, DB health, last activity."""
+    components = []
+
+    tier3_defs = [
+        {
+            "name": "YCE Harness",
+            "role": "Autonomous AI build engine",
+            "path": PROJECTS_DIR / "yce-harness",
+            "check": "venv",
+            "venv_path": "venv/bin/python",
+        },
+        {
+            "name": "IdeaForge",
+            "role": "Market signal intake pipeline",
+            "path": PROJECTS_DIR / "ideaforge",
+            "check": "db",
+            "db_path": str(IDEAFORGE_DB),
+            "count_query": "SELECT COUNT(*) FROM ideas",
+            "last_activity_query": "SELECT MAX(COALESCE(scored_at, synthesized_at, classified_at)) FROM ideas",
+        },
+        {
+            "name": "ST Factory",
+            "role": "Persona metrics & contract store",
+            "path": PROJECTS_DIR / "st-factory",
+            "check": "db",
+            "db_path": str(PERSONA_METRICS_DB),
+            "count_query": "SELECT COUNT(*) FROM outcome_records",
+            "last_activity_query": "SELECT MAX(emitted_at) FROM outcome_records",
+        },
+        {
+            "name": "Perceptor",
+            "role": "Cross-session context MCP server",
+            "path": PROJECTS_DIR / "perceptor",
+            "check": "built",
+            "built_path": "mcp-server/dist/index.js",
+        },
+        {
+            "name": "Research Agents",
+            "role": "Multi-LLM signal fleet",
+            "path": PROJECTS_DIR / "research-agents",
+            "check": "venv",
+            "venv_path": ".venv/bin/python",
+        },
+        {
+            "name": "Ultra-Magnus",
+            "role": "Idea-to-project pipeline",
+            "path": PROJECTS_DIR / "ultra-magnus",
+            "check": "venv",
+            "venv_path": "idea-factory/.venv/bin/python",
+        },
+    ]
+
+    for comp in tier3_defs:
+        entry = {
+            "name": comp["name"],
+            "role": comp["role"],
+            "installed": comp["path"].exists(),
+            "status": "unknown",
+            "detail": None,
+            "last_activity": None,
+        }
+
+        if not entry["installed"]:
+            entry["status"] = "missing"
+            components.append(entry)
+            continue
+
+        check = comp.get("check")
+        if check == "venv":
+            venv_exists = (comp["path"] / comp["venv_path"]).exists()
+            entry["status"] = "ready" if venv_exists else "needs_setup"
+            entry["detail"] = "venv OK" if venv_exists else "venv missing"
+        elif check == "built":
+            built = (comp["path"] / comp["built_path"]).exists()
+            entry["status"] = "ready" if built else "needs_build"
+            entry["detail"] = "built" if built else "needs npm run build"
+        elif check == "db":
+            db_path = comp.get("db_path")
+            if db_path and Path(db_path).exists():
+                try:
+                    db = sqlite3.connect(db_path, timeout=5)
+                    count = db.execute(comp["count_query"]).fetchone()[0]
+                    entry["status"] = "active" if count > 0 else "empty"
+                    entry["detail"] = f"{count} records"
+
+                    last = db.execute(comp["last_activity_query"]).fetchone()[0]
+                    entry["last_activity"] = last
+                    db.close()
+                except Exception as e:
+                    entry["status"] = "error"
+                    entry["detail"] = str(e)[:80]
+            else:
+                entry["status"] = "no_db"
+                entry["detail"] = "database file missing"
+
+        # Git last commit date as fallback activity indicator
+        if not entry["last_activity"]:
+            git_date = run(f"git -C {comp['path']} log -1 --format=%ct 2>/dev/null")
+            if git_date and git_date.isdigit():
+                entry["last_activity"] = int(git_date)
+
+        components.append(entry)
+
+    return components
+
+
+def get_metroplex_status():
+    """Query Metroplex DB for orchestrator status. Guarded -- returns None if DB missing."""
+    if not METROPLEX_DB.exists():
+        return None
+
+    try:
+        db = sqlite3.connect(str(METROPLEX_DB), timeout=5)
+        db.row_factory = sqlite3.Row
+
+        # Process running check
+        pids = run("pgrep -f 'metroplex.py' 2>/dev/null")
+        process_running = bool(pids.strip())
+
+        # Gate status
+        gates = {}
+        try:
+            for row in db.execute("SELECT gate, consecutive_failures, halted, last_error FROM gate_status").fetchall():
+                gates[row["gate"]] = {
+                    "halted": bool(row["halted"]),
+                    "consecutive_failures": row["consecutive_failures"],
+                    "last_error": row["last_error"],
+                }
+        except Exception:
+            pass
+
+        # Priority queue counts
+        pq = {}
+        try:
+            for row in db.execute(
+                "SELECT status, COUNT(*) as cnt FROM priority_queue GROUP BY status"
+            ).fetchall():
+                pq[row["status"]] = row["cnt"]
+        except Exception:
+            pass
+
+        # Last cycle
+        last_cycle = None
+        total_cycles = 0
+        try:
+            last_cycle_row = db.execute(
+                "SELECT completed_at FROM cycles WHERE completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 1"
+            ).fetchone()
+            last_cycle = last_cycle_row["completed_at"] if last_cycle_row else None
+            total_cycles = db.execute("SELECT COUNT(*) FROM cycles").fetchone()[0]
+        except Exception:
+            pass
+
+        db.close()
+
+        return {
+            "process_running": process_running,
+            "gates": gates,
+            "priority_queue": {
+                "pending": pq.get("pending", 0),
+                "dispatched": pq.get("dispatched", 0),
+                "completed": pq.get("completed", 0),
+                "failed": pq.get("failed", 0),
+            },
+            "last_cycle": last_cycle,
+            "total_cycles": total_cycles,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def get_pipeline_health():
+    """Assess ST Metro pipeline health across all stages."""
+    result = {
+        "research_agents_cron": False,
+        "last_signal_age_hours": None,
+        "last_idea_age_hours": None,
+        "last_triage_age_hours": None,
+        "pipeline_health": "unknown",
+    }
+
+    # Check cron
+    cron_out = run("crontab -l 2>/dev/null")
+    result["research_agents_cron"] = "research" in cron_out.lower()
+
+    # Last research signal age (from ST Factory persona_metrics.db)
+    if PERSONA_METRICS_DB.exists():
+        try:
+            db = sqlite3.connect(str(PERSONA_METRICS_DB), timeout=5)
+            row = db.execute("SELECT MAX(emitted_at) FROM research_signals").fetchone()
+            if row and row[0]:
+                dt = datetime.fromisoformat(str(row[0]))
+                result["last_signal_age_hours"] = round((datetime.now() - dt).total_seconds() / 3600, 1)
+            db.close()
+        except Exception:
+            pass
+
+    # Last idea age (from IdeaForge)
+    if IDEAFORGE_DB.exists():
+        try:
+            db = sqlite3.connect(str(IDEAFORGE_DB), timeout=5)
+            row = db.execute("SELECT MAX(created_at) FROM ideas").fetchone()
+            if row and row[0]:
+                try:
+                    dt = datetime.fromisoformat(str(row[0]))
+                except ValueError:
+                    dt = datetime.fromtimestamp(int(row[0]))
+                result["last_idea_age_hours"] = round((datetime.now() - dt).total_seconds() / 3600, 1)
+            db.close()
+        except Exception:
+            pass
+
+    # Last triage age (from Metroplex)
+    if METROPLEX_DB.exists():
+        try:
+            db = sqlite3.connect(str(METROPLEX_DB), timeout=5)
+            row = db.execute("SELECT MAX(decided_at) FROM triage_decisions").fetchone()
+            if row and row[0]:
+                dt = datetime.fromisoformat(str(row[0]))
+                result["last_triage_age_hours"] = round((datetime.now() - dt).total_seconds() / 3600, 1)
+            db.close()
+        except Exception:
+            pass
+
+    # Determine overall pipeline health
+    signal_fresh = result["last_signal_age_hours"] is not None and result["last_signal_age_hours"] < 48
+    idea_fresh = result["last_idea_age_hours"] is not None and result["last_idea_age_hours"] < 72
+    triage_fresh = result["last_triage_age_hours"] is not None and result["last_triage_age_hours"] < 96
+
+    if signal_fresh and idea_fresh and triage_fresh:
+        result["pipeline_health"] = "healthy"
+    elif signal_fresh or idea_fresh:
+        result["pipeline_health"] = "degraded"
+    else:
+        result["pipeline_health"] = "stale"
+
+    return result
+
+
+# ============================================================================
+# Tab 3: HLL (Human Learning Loop)
+# ============================================================================
+
+def get_hll_data():
+    """Gather Human Learning Loop data for Tab 3."""
+    result = {
+        "memory_stats": {},
+        "extraction": {},
+        "decisions": [],
+        "soundwave_outputs": [],
+        "learning_queue": [],
+        "session_stats": {},
+        "recent_memories": [],
+    }
+
+    if not CLAUDECLAW_DB.exists():
+        return result
+
+    try:
+        db = sqlite3.connect(str(CLAUDECLAW_DB), timeout=5)
+        now_epoch = int(time.time())
+        today_start = now_epoch - (now_epoch % 86400)
+
+        # --- Memory Stats ---
+        semantic = db.execute("SELECT COUNT(*) FROM memories WHERE sector='semantic'").fetchone()[0]
+        episodic = db.execute("SELECT COUNT(*) FROM memories WHERE sector='episodic'").fetchone()[0]
+        vectors = db.execute("SELECT COUNT(*) FROM memory_vectors").fetchone()[0]
+        semantic_today = db.execute(
+            "SELECT COUNT(*) FROM memories WHERE sector='semantic' AND created_at>?", (today_start,)
+        ).fetchone()[0]
+        episodic_today = db.execute(
+            "SELECT COUNT(*) FROM memories WHERE sector='episodic' AND created_at>?", (today_start,)
+        ).fetchone()[0]
+
+        result["memory_stats"] = {
+            "semantic_count": semantic,
+            "episodic_count": episodic,
+            "vector_count": vectors,
+            "semantic_today": semantic_today,
+            "episodic_today": episodic_today,
+            "total_memories": semantic + episodic,
+        }
+
+        # --- Extraction Pipeline ---
+        ext = db.execute("SELECT last_log_id, last_run_at, facts_total FROM extraction_state LIMIT 1").fetchone()
+        total_logs = db.execute("SELECT COUNT(*) FROM conversation_log").fetchone()[0]
+
+        if ext:
+            coverage = round((ext[0] / total_logs * 100), 1) if total_logs > 0 else 0
+            result["extraction"] = {
+                "last_log_id": ext[0],
+                "total_log_entries": total_logs,
+                "facts_total": ext[2],
+                "last_run_at": ext[1],
+                "coverage_pct": coverage,
+            }
+        else:
+            result["extraction"] = {
+                "last_log_id": 0,
+                "total_log_entries": total_logs,
+                "facts_total": 0,
+                "last_run_at": None,
+                "coverage_pct": 0,
+            }
+
+        # --- Decisions (extracted from conversation_log) ---
+        decision_rows = db.execute("""
+            SELECT id, role, substr(content, 1, 200), created_at
+            FROM conversation_log
+            WHERE role='assistant'
+            AND (
+                content LIKE '%decided%' OR content LIKE '%shelved%' OR
+                content LIKE '%confirmed%' OR content LIKE '%going with%' OR
+                content LIKE '%proceeding with%' OR content LIKE '%approved%' OR
+                content LIKE '%rejected%' OR content LIKE '%will not%' OR
+                content LIKE '%instead of%'
+            )
+            ORDER BY created_at DESC
+            LIMIT 20
+        """).fetchall()
+
+        for row in decision_rows:
+            result["decisions"].append({
+                "id": row[0],
+                "content": row[2],
+                "status": "confirmed",
+                "source_log_id": row[0],
+                "source_role": row[1],
+                "decided_at": row[3],
+            })
+
+        # --- Soundwave Outputs ---
+        sw_rows = db.execute("""
+            SELECT id, substr(prompt, 1, 100), status, substr(result, 1, 200),
+                   created_at, started_at, completed_at
+            FROM dispatch_queue
+            WHERE worker_type='soundwave'
+            ORDER BY created_at DESC
+            LIMIT 10
+        """).fetchall()
+
+        for row in sw_rows:
+            duration = None
+            if row[5] and row[6]:
+                duration = row[6] - row[5]
+            result["soundwave_outputs"].append({
+                "dispatch_id": row[0],
+                "prompt_preview": row[1],
+                "status": row[2],
+                "result_preview": row[3],
+                "duration_seconds": duration,
+                "completed_at": row[6],
+            })
+
+        # --- Session Stats (last 7 days) ---
+        week_ago = now_epoch - (7 * 86400)
+        sess_row = db.execute("""
+            SELECT COUNT(DISTINCT session_id) as sessions,
+                   COUNT(*) as turns,
+                   SUM(cost_usd) as total_cost,
+                   SUM(did_compact) as compactions
+            FROM token_usage
+            WHERE created_at > ?
+        """, (week_ago,)).fetchone()
+        if sess_row:
+            result["session_stats"] = {
+                "sessions_7d": sess_row[0] or 0,
+                "turns_7d": sess_row[1] or 0,
+                "cost_7d": round(sess_row[2] or 0, 4),
+                "compactions_7d": sess_row[3] or 0,
+            }
+
+        # --- Recent Memories ---
+        mem_rows = db.execute("""
+            SELECT id, sector, substr(content, 1, 150), salience, accessed_at
+            FROM memories
+            ORDER BY accessed_at DESC
+            LIMIT 10
+        """).fetchall()
+        for row in mem_rows:
+            result["recent_memories"].append({
+                "id": row[0],
+                "sector": row[1],
+                "content_preview": row[2],
+                "salience": round(row[3], 2),
+                "accessed_at": row[4],
+            })
+
+        db.close()
+    except Exception:
+        pass
+
+    # --- Learning Queue (from ST Factory research signals) ---
+    if PERSONA_METRICS_DB.exists():
+        try:
+            st_db = sqlite3.connect(str(PERSONA_METRICS_DB), timeout=5)
+            signals = st_db.execute("""
+                SELECT title, source, summary, emitted_at, raw_json
+                FROM research_signals
+                WHERE relevance IN ('high', 'medium')
+                ORDER BY emitted_at DESC
+                LIMIT 10
+            """).fetchall()
+
+            for sig in signals:
+                raw = {}
+                try:
+                    raw = json.loads(sig[4]) if sig[4] else {}
+                except Exception:
+                    pass
+                result["learning_queue"].append({
+                    "title": sig[0],
+                    "source": sig[1],
+                    "summary": (sig[2] or "")[:200],
+                    "surfaced_at": sig[3][:10] if sig[3] else None,
+                    "quality_score": raw.get("quality_score"),
+                })
+
+            st_db.close()
+        except Exception:
+            pass
+
+    return result
+
+
+# ============================================================================
+# ============================================================================
+# Tab 5: Pipeline
+# ============================================================================
+
+def get_pipeline_data():
+    """Gather pipeline items and decisions for Tab 5."""
+    result = {
+        "stats": {"active": 0, "queued": 0, "research": 0, "shelved": 0, "killed": 0, "completed": 0},
+        "items": [],
+        "recent_decisions": [],
+        "effort_total": 0,
+        "effort_queued": 0,
+        "deadline_items": [],
+    }
+
+    if not CLAUDECLAW_DB.exists():
+        return result
+
+    try:
+        db = sqlite3.connect(str(CLAUDECLAW_DB), timeout=5)
+
+        # Check table exists
+        table_check = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='pipeline_items'"
+        ).fetchone()
+        if not table_check:
+            db.close()
+            return result
+
+        # Stats by status
+        for row in db.execute(
+            "SELECT status, COUNT(*) as cnt FROM pipeline_items GROUP BY status"
+        ).fetchall():
+            if row[0] in result["stats"]:
+                result["stats"][row[0]] = row[1]
+
+        # All non-completed items (active, queued, research, shelved, killed)
+        items = db.execute("""
+            SELECT id, title, description, status, tier, worker_type, source,
+                   effort_hours, deadline, depends_on, created_at, updated_at,
+                   shelved_reason, resume_trigger
+            FROM pipeline_items
+            WHERE status != 'completed'
+            ORDER BY
+                CASE status
+                    WHEN 'active' THEN 1
+                    WHEN 'queued' THEN 2
+                    WHEN 'research' THEN 3
+                    WHEN 'shelved' THEN 4
+                    WHEN 'killed' THEN 5
+                END,
+                CASE tier
+                    WHEN 'p1' THEN 1
+                    WHEN 'p2' THEN 2
+                    WHEN 'p3' THEN 3
+                    WHEN 'parked' THEN 4
+                END,
+                updated_at DESC
+        """).fetchall()
+
+        for row in items:
+            result["items"].append({
+                "id": row[0],
+                "title": row[1],
+                "description": row[2],
+                "status": row[3],
+                "tier": row[4],
+                "worker_type": row[5],
+                "source": row[6],
+                "effort_hours": row[7],
+                "deadline": row[8],
+                "depends_on": row[9],
+                "created_at": row[10],
+                "updated_at": row[11],
+                "shelved_reason": row[12],
+                "resume_trigger": row[13],
+            })
+
+        # Effort totals
+        effort_row = db.execute(
+            "SELECT COALESCE(SUM(effort_hours), 0) FROM pipeline_items WHERE status IN ('active', 'queued', 'research')"
+        ).fetchone()
+        result["effort_total"] = effort_row[0] if effort_row else 0
+
+        effort_q = db.execute(
+            "SELECT COALESCE(SUM(effort_hours), 0) FROM pipeline_items WHERE status = 'queued'"
+        ).fetchone()
+        result["effort_queued"] = effort_q[0] if effort_q else 0
+
+        # Items with deadlines
+        deadline_items = db.execute(
+            "SELECT title, deadline, status FROM pipeline_items WHERE deadline IS NOT NULL AND status NOT IN ('completed', 'killed') ORDER BY deadline"
+        ).fetchall()
+        for d in deadline_items:
+            result["deadline_items"].append({
+                "title": d[0], "deadline": d[1], "status": d[2]
+            })
+
+        # Recent decisions (last 20)
+        decisions = db.execute("""
+            SELECT d.decision, d.reason, d.decided_by, d.created_at, p.title
+            FROM pipeline_decisions d
+            LEFT JOIN pipeline_items p ON d.pipeline_item_id = p.id
+            ORDER BY d.created_at DESC
+            LIMIT 20
+        """).fetchall()
+        for dec in decisions:
+            result["recent_decisions"].append({
+                "decision": dec[0],
+                "reason": dec[1],
+                "decided_by": dec[2],
+                "created_at": dec[3],
+                "item_title": dec[4],
+            })
+
+        db.close()
+    except Exception:
+        pass
+
+    return result
+
+
+# Tab 4: Strategy (Christensen Filter)
+# ============================================================================
+
+def get_christensen_data():
+    """Gather Christensen filter evaluation data for Tab 4."""
+    result = {
+        "stats": {"total": 0, "passed": 0, "failed": 0, "overridden": 0},
+        "evaluations": [],
+        "recent_ideas_pipeline": [],
+    }
+
+    if CLAUDECLAW_DB.exists():
+        try:
+            db = sqlite3.connect(str(CLAUDECLAW_DB), timeout=5)
+
+            # Check if christensen_log table exists
+            table_check = db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='christensen_log'"
+            ).fetchone()
+
+            if table_check:
+                # --- Stats ---
+                stats_row = db.execute("""
+                    SELECT
+                        COUNT(*) as total,
+                        SUM(CASE WHEN outcome='pass' THEN 1 ELSE 0 END) as passed,
+                        SUM(CASE WHEN outcome='fail' THEN 1 ELSE 0 END) as failed,
+                        SUM(CASE WHEN outcome='override' THEN 1 ELSE 0 END) as overridden
+                    FROM christensen_log
+                """).fetchone()
+                if stats_row:
+                    result["stats"] = {
+                        "total": stats_row[0] or 0,
+                        "passed": stats_row[1] or 0,
+                        "failed": stats_row[2] or 0,
+                        "overridden": stats_row[3] or 0,
+                    }
+
+                # --- Recent Evaluations ---
+                eval_rows = db.execute("""
+                    SELECT id, idea, job_to_do, serves_m2ai, beachhead, outcome, reasoning, source, created_at
+                    FROM christensen_log
+                    ORDER BY created_at DESC
+                    LIMIT 20
+                """).fetchall()
+
+                for row in eval_rows:
+                    result["evaluations"].append({
+                        "id": row[0],
+                        "idea": row[1],
+                        "job_to_do": row[2],
+                        "serves_m2ai": row[3],
+                        "beachhead": row[4],
+                        "outcome": row[5],
+                        "reasoning": row[6],
+                        "source": row[7],
+                        "created_at": row[8],
+                    })
+            else:
+                # Table doesn't exist yet -- fall back to conversation_log heuristic
+                filter_rows = db.execute("""
+                    SELECT id, substr(content, 1, 300), created_at
+                    FROM conversation_log
+                    WHERE role='assistant'
+                    AND (
+                        content LIKE '%Christensen filter%' OR
+                        content LIKE '%christensen filter%' OR
+                        content LIKE '%doesn''t pass the%filter%' OR
+                        content LIKE '%passes the%filter%' OR
+                        content LIKE '%job does this hire%' OR
+                        content LIKE '%beachhead or a distraction%'
+                    )
+                    ORDER BY created_at DESC
+                    LIMIT 20
+                """).fetchall()
+
+                for row in filter_rows:
+                    content = row[1]
+                    outcome = "unknown"
+                    if "doesn't pass" in content.lower() or "does not pass" in content.lower() or "fail" in content.lower():
+                        outcome = "fail"
+                    elif "passes" in content.lower() or "pass" in content.lower():
+                        outcome = "pass"
+
+                    result["evaluations"].append({
+                        "id": row[0],
+                        "idea": content[:100],
+                        "job_to_do": None,
+                        "serves_m2ai": None,
+                        "beachhead": None,
+                        "outcome": outcome,
+                        "reasoning": content[:200],
+                        "source": "conversation_heuristic",
+                        "created_at": row[2],
+                    })
+
+                # Update stats from heuristic results
+                result["stats"]["total"] = len(result["evaluations"])
+                result["stats"]["passed"] = sum(1 for e in result["evaluations"] if e["outcome"] == "pass")
+                result["stats"]["failed"] = sum(1 for e in result["evaluations"] if e["outcome"] == "fail")
+
+            db.close()
+        except Exception:
+            pass
+
+    # --- IdeaForge Pipeline (recent ideas) ---
+    if IDEAFORGE_DB.exists():
+        try:
+            idb = sqlite3.connect(str(IDEAFORGE_DB), timeout=5)
+            # Try to read ideas -- schema may vary
+            try:
+                idea_rows = idb.execute("""
+                    SELECT id, title, COALESCE(source_signals, '') as source,
+                           status, COALESCE(scored_at, synthesized_at, classified_at) as created_at,
+                           weighted_score
+                    FROM ideas
+                    ORDER BY COALESCE(scored_at, synthesized_at, classified_at) DESC
+                    LIMIT 10
+                """).fetchall()
+                for row in idea_rows:
+                    result["recent_ideas_pipeline"].append({
+                        "id": row[0],
+                        "title": row[1],
+                        "source": row[2][:80] if row[2] else "",
+                        "status": row[3],
+                        "created_at": str(row[4]) if row[4] else None,
+                        "score": row[5],
+                    })
+            except Exception:
+                # Schema might not have these columns
+                pass
+            idb.close()
+        except Exception:
+            pass
+
+    return result
+
+
+# ============================================================================
+# Existing v2 functions (unchanged)
+# ============================================================================
 
 def check_service_health():
     """Check all monitored services."""
@@ -154,7 +1098,6 @@ def check_pipeline():
         # Grab checkbox items
         if stripped.startswith("- [x]"):
             task = stripped[6:].strip()
-            # Only include recently completed (skip if too old)
             items.append({"text": task[:80], "detail": current_section, "status": "ok"})
         elif stripped.startswith("- [ ]"):
             task = stripped[6:].strip()
@@ -288,7 +1231,6 @@ def get_unfinished():
 
         if stripped.startswith("### ") and in_p3:
             current_heading = stripped[4:].strip()
-            # Remove common suffixes like "(ACTIVE - ...)" for cleaner display
             clean = re.sub(r"\s*\(.*?\)\s*$", "", current_heading)
             if clean not in headings:
                 headings[clean] = {"total": 0, "done": 0, "notes": []}
@@ -317,7 +1259,7 @@ def get_unfinished():
     for heading, data in headings.items():
         open_count = data["total"] - data["done"]
         if open_count == 0:
-            continue  # Skip fully done headings
+            continue
         progress = f"{data['done']}/{data['total']} done"
         note = data["notes"][0] if data["notes"] else ""
         items.append({
@@ -345,11 +1287,7 @@ def _read_jsonl(path):
 
 
 def get_soundwave_recommendations():
-    """Read improvement recommendations from ST Factory for operator review.
-
-    Soundwave surfaces these from Sky-Lynx analysis, IdeaForge signals,
-    and ST Factory metrics. Operator reviews and acts on them from dashboard.
-    """
+    """Read improvement recommendations from ST Factory for operator review."""
     items = []
 
     # --- 1. Improvement Recommendations (Sky-Lynx) ---
@@ -394,12 +1332,10 @@ def get_soundwave_recommendations():
 
     # --- 2. Metroplex Priority Queue (stuck/dispatched items) ---
     try:
-        import sqlite3
         if METROPLEX_DB.exists():
-            db = sqlite3.connect(str(METROPLEX_DB))
+            db = sqlite3.connect(str(METROPLEX_DB), timeout=5)
             db.row_factory = sqlite3.Row
 
-            # Dispatched items (may be stuck)
             dispatched = db.execute(
                 "SELECT title, source, priority_score, dispatched_at FROM priority_queue WHERE status='dispatched' ORDER BY priority_score DESC LIMIT 5"
             ).fetchall()
@@ -418,7 +1354,6 @@ def get_soundwave_recommendations():
                     "status": "warning"
                 })
 
-            # Pending items
             pending = db.execute(
                 "SELECT title, source, priority_score FROM priority_queue WHERE status='pending' ORDER BY priority_score DESC LIMIT 3"
             ).fetchall()
@@ -429,7 +1364,6 @@ def get_soundwave_recommendations():
                     "status": "info"
                 })
 
-            # Failed items (need attention)
             failed = db.execute(
                 "SELECT title, source FROM priority_queue WHERE status='failed' ORDER BY completed_at DESC LIMIT 3"
             ).fetchall()
@@ -450,7 +1384,6 @@ def get_soundwave_recommendations():
     for patch in pending_patches[:3]:
         persona = patch.get("persona_id", "unknown")
         rationale = patch.get("rationale", "")[:80]
-        patch_id = patch.get("patch_id", "")[:12]
         version = f"{patch.get('from_version', '?')} -> {patch.get('to_version', '?')}"
         ops = [p.get("operation", "?") + " " + p.get("path", "?") for p in patch.get("patches", [])]
         ops_str = ", ".join(ops[:2])
@@ -460,9 +1393,8 @@ def get_soundwave_recommendations():
             "status": "warning"
         })
 
-    # --- 4. High-scoring Research Signals (latest, need attention) ---
+    # --- 4. High-scoring Research Signals ---
     signals = _read_jsonl(ST_FACTORY_SIGNALS)
-    # Get recent high-quality signals (last 7 days, score > 0.7)
     cutoff = (datetime.now() - timedelta(days=7)).isoformat()
     recent_signals = [
         s for s in signals
@@ -486,6 +1418,10 @@ def get_soundwave_recommendations():
     return {"title": "Soundwave - Operator Review", "items": items}
 
 
+# ============================================================================
+# Timeline + Report Generation
+# ============================================================================
+
 def update_timeline(completed_items):
     """Update timeline.json with today's completed count."""
     today = datetime.now().strftime("%Y-%m-%d")
@@ -498,7 +1434,6 @@ def update_timeline(completed_items):
         except json.JSONDecodeError:
             pass
 
-    # Check if today already exists
     found = False
     for entry in timeline.get("weekly", []):
         if entry["date"] == today:
@@ -514,7 +1449,6 @@ def update_timeline(completed_items):
             "items": []
         })
 
-    # Keep last 7 days
     timeline["weekly"] = timeline["weekly"][-7:]
     timeline["totals"]["week"] = sum(e["completed"] for e in timeline["weekly"])
 
@@ -522,7 +1456,7 @@ def update_timeline(completed_items):
 
 
 def generate():
-    """Generate full report."""
+    """Generate full report with v3 4-tab structure."""
     report_type = "morning"
     if len(sys.argv) > 2 and sys.argv[1] == "--type":
         report_type = sys.argv[2]
@@ -530,7 +1464,7 @@ def generate():
     now = datetime.now()
     timestamp = now.isoformat()
 
-    # Gather all sections
+    # Gather existing v2 sections (backward compat)
     service_health = check_service_health()
     pipeline = check_pipeline()
     activity = check_activity()
@@ -539,9 +1473,17 @@ def generate():
     unfinished = get_unfinished()
     soundwave = get_soundwave_recommendations()
 
+    # Gather v3 tab data
+    agent_data = get_agent_data()
+    hll_data = get_hll_data()
+    christensen_data = get_christensen_data()
+    pipeline_tab_data = get_pipeline_data()
+
     report = {
         "timestamp": timestamp,
         "type": report_type,
+
+        # v2 backward compat (Tab 2 uses this directly)
         "sections": {
             "service_health": service_health,
             "pipeline": pipeline,
@@ -550,6 +1492,25 @@ def generate():
             "uncommitted": uncommitted,
             "priorities": priorities,
             "unfinished": unfinished,
+        },
+
+        # v3 tab-specific data
+        "tabs": {
+            "agents": agent_data,
+            "operations": {
+                "sections": {
+                    "service_health": service_health,
+                    "pipeline": pipeline,
+                    "soundwave": soundwave,
+                    "activity": activity,
+                    "uncommitted": uncommitted,
+                    "priorities": priorities,
+                    "unfinished": unfinished,
+                }
+            },
+            "hll": hll_data,
+            "strategy": christensen_data,
+            "pipeline_tab": pipeline_tab_data,
         }
     }
 

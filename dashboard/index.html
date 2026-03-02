@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Data Dashboard - M2AI Command Center</title>
+<title>EAC Command Center - M2AI</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -45,311 +45,310 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 24px;
-    padding-bottom: 16px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
     border-bottom: 2px solid var(--border);
   }
-  .header h1 {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text);
-  }
+  .header h1 { font-size: 22px; font-weight: 700; color: var(--text); }
   .header h1 span { color: var(--accent); }
-  .header-meta {
-    font-size: 13px;
-    color: var(--text-secondary);
-    text-align: right;
-  }
+  .header-meta { font-size: 13px; color: var(--text-secondary); text-align: right; }
   .header-meta .time { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--text); }
 
   /* Live indicator */
-  .live-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 4px;
-  }
-  .live-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--ok);
-    animation: pulse 2s infinite;
-  }
+  .live-bar { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); animation: pulse 2s infinite; }
   .live-dot.stale { background: var(--warning); animation: none; }
   .live-dot.error { background: var(--error); animation: none; }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-  .live-label {
-    font-size: 11px;
-    font-family: 'JetBrains Mono', monospace;
-    color: var(--text-secondary);
-  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .live-label { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); }
   .refresh-btn {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 2px 8px;
-    font-size: 11px;
-    color: var(--text-secondary);
-    cursor: pointer;
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    padding: 2px 8px; font-size: 11px; color: var(--text-secondary); cursor: pointer;
     font-family: 'JetBrains Mono', monospace;
   }
   .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
   .refresh-btn.loading { opacity: 0.5; pointer-events: none; }
 
-  /* Summary bar */
+  /* ── Tab Navigation ── */
+  .tab-bar {
+    display: flex; gap: 0; margin-bottom: 20px;
+    border-bottom: 2px solid var(--border);
+  }
+  .tab-btn {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    padding: 10px 20px; font-family: 'Inter', sans-serif; font-size: 13px;
+    font-weight: 500; color: var(--text-secondary); cursor: pointer;
+    transition: color 0.2s, border-color 0.2s; position: relative;
+    margin-bottom: -2px;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab-badge {
+    font-size: 10px; background: var(--error); color: white; border-radius: 8px;
+    padding: 1px 5px; margin-left: 4px; font-weight: 600;
+  }
+  .tab-badge.warning { background: var(--warning); }
+  .tab-badge.ok { background: var(--ok); }
+  .tab-badge.info { background: var(--info); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Shared components ── */
   .summary-bar {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 12px;
-    margin-bottom: 24px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px; margin-bottom: 20px;
   }
   .stat-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px;
-    box-shadow: var(--shadow);
-    text-align: center;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; box-shadow: var(--shadow); text-align: center;
   }
-  .stat-card .number {
-    font-size: 32px;
-    font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
-  }
-  .stat-card .label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+  .stat-card .number { font-size: 28px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+  .stat-card .label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+  .stat-card .sub { font-size: 10px; color: var(--text-secondary); margin-top: 2px; }
   .stat-card.ok .number { color: var(--ok); }
   .stat-card.warning .number { color: var(--warning); }
   .stat-card.error .number { color: var(--error); }
   .stat-card.accent .number { color: var(--accent); }
+  .stat-card.info .number { color: var(--info); }
 
-  /* Timeline chart */
-  .chart-container {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 24px;
-    box-shadow: var(--shadow);
-  }
-  .chart-container h2 {
-    font-size: 14px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-secondary);
-    margin-bottom: 12px;
-  }
-  .chart-wrapper { height: 180px; }
-
-  /* Sections grid */
-  .sections-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
-  }
-
-  /* Section card */
   .section-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
-    overflow: hidden;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow); overflow: hidden; margin-bottom: 16px;
   }
   .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 14px 16px;
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-    user-select: none;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 16px; background: var(--bg); border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none;
   }
   .section-header:hover { background: #F3F4F6; }
-  .section-header h3 {
-    font-size: 13px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-secondary);
-  }
-  .section-header .count {
-    font-size: 12px;
-    background: var(--accent-light);
-    color: var(--accent);
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-weight: 600;
-  }
-  .section-header .chevron {
-    font-size: 12px;
-    color: var(--text-secondary);
-    transition: transform 0.2s;
-  }
+  .section-header h3 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
+  .section-header .count { font-size: 12px; background: var(--accent-light); color: var(--accent); padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .section-header .chevron { font-size: 12px; color: var(--text-secondary); transition: transform 0.2s; }
   .section-card.collapsed .section-body { display: none; }
   .section-card.collapsed .chevron { transform: rotate(-90deg); }
-
   .section-body { padding: 0; }
 
-  /* Items */
   .item {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px 16px;
-    border-bottom: 1px solid #F3F4F6;
-    cursor: pointer;
-    transition: background 0.15s;
+    display: flex; align-items: flex-start; gap: 10px; padding: 10px 16px;
+    border-bottom: 1px solid #F3F4F6; cursor: pointer; transition: background 0.15s;
   }
   .item:last-child { border-bottom: none; }
   .item:hover { background: #FAFBFC; }
-
-  .item-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-top: 7px;
-    flex-shrink: 0;
-  }
+  .item-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 7px; flex-shrink: 0; }
   .item-dot.ok { background: var(--ok); }
   .item-dot.warning { background: var(--warning); }
   .item-dot.error { background: var(--error); }
   .item-dot.info { background: var(--info); }
-
+  .item-dot.pass { background: var(--ok); }
+  .item-dot.fail { background: var(--error); }
+  .item-dot.override { background: var(--warning); }
   .item-content { flex: 1; min-width: 0; }
-  .item-text {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text);
-  }
-  .item-detail {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-top: 2px;
-    display: none;
-    line-height: 1.5;
-  }
+  .item-text { font-size: 14px; font-weight: 500; color: var(--text); }
+  .item-detail { font-size: 12px; color: var(--text-secondary); margin-top: 2px; display: none; line-height: 1.5; }
   .item.expanded .item-detail { display: block; }
   .item.expanded { background: #FAFBFC; }
 
-  /* Priority Picker */
-  .priority-section {
-    background: var(--card);
-    border: 2px solid var(--accent);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 24px;
-    box-shadow: var(--shadow);
-  }
-  .priority-section h2 {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--accent);
-    margin-bottom: 4px;
-  }
-  .priority-section .subtitle {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-bottom: 16px;
+  .sections-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 16px; margin-bottom: 24px;
   }
 
+  /* ── Tab 1: Agent cards ── */
+  .agent-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 20px; }
+  .agent-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px; box-shadow: var(--shadow); border-left: 3px solid var(--border);
+  }
+  .agent-card.online { border-left-color: var(--ok); }
+  .agent-card.stopped { border-left-color: var(--error); }
+  .agent-card.errored { border-left-color: var(--warning); }
+  .agent-card .agent-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agent-card .agent-role { font-size: 10px; color: var(--text-secondary); margin-bottom: 4px; }
+  .agent-mid { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .agent-mid .agent-visual { flex-shrink: 0; }
+  .agent-mid .agent-visual img { height: 40px; width: auto; display: block; }
+  .agent-mid .agent-visual svg { width: 36px; height: 36px; display: block; }
+  .agent-efficiency { width: 56px; height: 56px; flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: center; }
+  .agent-efficiency svg { width: 56px; height: 56px; }
+  .agent-efficiency .eff-pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text); }
+  .agent-card .agent-stat { font-size: 10px; color: var(--text-secondary); line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agent-card .agent-stat b { color: var(--text); }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 3px; }
+  .status-dot.online { background: var(--ok); }
+  .status-dot.stopped { background: var(--error); }
+  .status-dot.errored { background: var(--warning); animation: pulse 2s infinite; }
+
+  .metro-bar {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; box-shadow: var(--shadow); margin-bottom: 20px;
+  }
+  .metro-bar h3 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 10px; }
+  .metro-items { display: flex; flex-wrap: wrap; gap: 16px; }
+  .metro-item { font-size: 13px; }
+  .metro-item b { font-weight: 600; }
+
+  .dispatch-table { width: 100%; border-collapse: collapse; }
+  .dispatch-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .dispatch-table td { padding: 8px 12px; font-size: 13px; font-family: 'JetBrains Mono', monospace; border-bottom: 1px solid #F3F4F6; }
+
+  /* ── Tier sections (collapsible) ── */
+  .tier-section { margin-bottom: 20px; }
+  .tier-header {
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    cursor: pointer; user-select: none; transition: all 0.15s;
+    box-shadow: var(--shadow);
+  }
+  .tier-header:hover { box-shadow: var(--shadow-hover); }
+  .tier-header h3 { font-size: 14px; font-weight: 700; flex: 1; margin: 0; }
+  .tier-header .tier-badge {
+    font-size: 11px; font-weight: 600; padding: 2px 10px; border-radius: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .tier-header .tier-badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .tier-header .tier-badge.warning { background: var(--warning-bg); color: var(--warning); }
+  .tier-header .tier-badge.error { background: var(--error-bg); color: var(--error); }
+  .tier-header .tier-badge.info { background: var(--info-bg); color: var(--info); }
+  .tier-header .tier-chevron { font-size: 12px; color: var(--text-secondary); transition: transform 0.2s; }
+  .tier-section.collapsed .tier-chevron { transform: rotate(-90deg); }
+  .tier-body { padding-top: 14px; }
+  .tier-section.collapsed .tier-body { display: none; }
+
+  .cron-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .cron-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 10px;
+  }
+  .cron-card .cron-label { font-size: 13px; font-weight: 600; }
+  .cron-card .cron-detail { font-size: 11px; color: var(--text-secondary); }
+  .cron-card .cron-schedule { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+
+  .component-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .component-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; box-shadow: var(--shadow); border-left: 3px solid var(--border);
+  }
+  .component-card.active { border-left-color: var(--ok); }
+  .component-card.ready { border-left-color: var(--info); }
+  .component-card.error { border-left-color: var(--error); }
+  .component-card.missing { border-left-color: var(--text-secondary); }
+  .component-card .comp-name { font-size: 14px; font-weight: 600; }
+  .component-card .comp-role { font-size: 11px; color: var(--text-secondary); }
+  .component-card .comp-stat { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+  .component-card .comp-stat b { color: var(--text); }
+
+  /* ── Tab 2: Operations (reused from v2) ── */
+  .chart-container {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; margin-bottom: 20px; box-shadow: var(--shadow);
+  }
+  .chart-container h2 { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 12px; }
+  .chart-wrapper { height: 180px; }
+
+  .priority-section {
+    background: var(--card); border: 2px solid var(--accent); border-radius: 12px;
+    padding: 20px; margin-bottom: 20px; box-shadow: var(--shadow);
+  }
+  .priority-section h2 { font-size: 16px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+  .priority-section .subtitle { font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; }
   .priority-list { list-style: none; }
   .priority-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 8px;
-    background: white;
-    cursor: grab;
-    transition: all 0.15s;
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
+    background: white; cursor: grab; transition: all 0.15s;
   }
   .priority-item:hover { border-color: var(--accent); box-shadow: var(--shadow-hover); }
   .priority-item.dragging { opacity: 0.5; border-color: var(--accent); }
   .priority-item .rank {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: 700;
-    flex-shrink: 0;
+    width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: white;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;
   }
   .priority-item .rank.unranked { background: var(--border); color: var(--text-secondary); }
-  .priority-item input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--accent);
-    cursor: pointer;
-  }
-  .priority-item label {
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    flex: 1;
-  }
-  .priority-item .drag-handle {
-    color: var(--text-secondary);
-    cursor: grab;
-    font-size: 16px;
-    padding: 0 4px;
-  }
-
+  .priority-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+  .priority-item label { font-size: 14px; font-weight: 500; cursor: pointer; flex: 1; }
+  .priority-item .drag-handle { color: var(--text-secondary); cursor: grab; font-size: 16px; padding: 0 4px; }
   .priority-output {
-    margin-top: 16px;
-    padding: 12px 16px;
-    background: #1A1A2E;
-    border-radius: 8px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    color: #E8735A;
-    white-space: pre-line;
-    display: none;
+    margin-top: 16px; padding: 12px 16px; background: #1A1A2E; border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #E8735A;
+    white-space: pre-line; display: none;
   }
   .priority-output.visible { display: block; }
 
-  /* Soundwave section accent */
-  .section-card.soundwave-card {
-    border-left: 3px solid var(--info);
+  .section-card.soundwave-card { border-left: 3px solid var(--info); }
+  .section-card.soundwave-card .section-header h3 { color: var(--info); }
+
+  /* ── Tab 3: HLL ── */
+  .extraction-bar {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 20px;
   }
-  .section-card.soundwave-card .section-header h3 {
-    color: var(--info);
+  .progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 6px 0; }
+  .progress-bar .fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .stat-inline { display: flex; gap: 24px; padding: 12px 16px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); margin-bottom: 20px; flex-wrap: wrap; }
+  .stat-pair .stat-value { font-weight: 700; font-family: 'JetBrains Mono', monospace; font-size: 14px; }
+  .stat-pair .stat-label { font-size: 11px; color: var(--text-secondary); }
+
+  /* ── Tab 4: Strategy ── */
+  .eval-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow); cursor: pointer;
+    transition: all 0.15s;
   }
+  .eval-card:hover { box-shadow: var(--shadow-hover); }
+  .eval-card .eval-idea { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .eval-card .eval-outcome { font-size: 11px; font-weight: 600; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; display: inline-block; }
+  .eval-card .eval-outcome.pass { background: var(--ok-bg); color: var(--ok); }
+  .eval-card .eval-outcome.fail { background: var(--error-bg); color: var(--error); }
+  .eval-card .eval-outcome.override { background: var(--warning-bg); color: var(--warning); }
+  .eval-card .eval-outcome.unknown { background: var(--info-bg); color: var(--info); }
+  .eval-card .eval-detail { font-size: 12px; color: var(--text-secondary); margin-top: 6px; display: none; }
+  .eval-card.expanded .eval-detail { display: block; }
+  .eval-card .eval-meta { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); font-size: 14px; }
+
+  /* ── Tab 5: Pipeline ── */
+  .pipeline-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow);
+    border-left: 4px solid var(--border); cursor: pointer; transition: all 0.15s;
+  }
+  .pipeline-card:hover { box-shadow: var(--shadow-hover); }
+  .pipeline-card.active { border-left-color: var(--ok); }
+  .pipeline-card.queued { border-left-color: var(--info); }
+  .pipeline-card.research { border-left-color: var(--warning); }
+  .pipeline-card.shelved { border-left-color: var(--text-secondary); }
+  .pipeline-card.killed { border-left-color: var(--error); }
+  .pipeline-card .pl-title { font-size: 14px; font-weight: 600; }
+  .pipeline-card .pl-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .pipeline-card .pl-meta .tier-tag { font-weight: 600; text-transform: uppercase; font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--info-bg); color: var(--info); }
+  .pipeline-card .pl-meta .worker-tag { font-weight: 600; font-size: 10px; padding: 1px 6px; border-radius: 3px; background: #F3F0FF; color: #7C3AED; }
+  .pipeline-card .pl-meta .deadline-tag { font-weight: 600; font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--error-bg); color: var(--error); }
+  .pipeline-card .pl-desc { font-size: 12px; color: var(--text-secondary); margin-top: 6px; display: none; }
+  .pipeline-card .pl-shelved-info { font-size: 12px; color: var(--text-secondary); margin-top: 4px; font-style: italic; display: none; }
+  .pipeline-card.expanded .pl-desc,
+  .pipeline-card.expanded .pl-shelved-info { display: block; }
 
   /* Footer */
-  .footer {
-    text-align: center;
-    padding: 16px;
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
+  .footer { text-align: center; padding: 16px; font-size: 12px; color: var(--text-secondary); }
 
   /* Responsive */
+  @media (max-width: 1024px) { .agent-grid { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 768px) {
     body { padding: 12px; }
     .sections-grid { grid-template-columns: 1fr; }
     .summary-bar { grid-template-columns: repeat(2, 1fr); }
+    .agent-grid { grid-template-columns: repeat(2, 1fr); }
+    .two-col { grid-template-columns: 1fr; }
+    .tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tab-btn { flex-shrink: 0; padding: 8px 14px; font-size: 12px; }
   }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <div>
-    <h1><span>Data</span> Dashboard</h1>
-  </div>
+  <div><h1><span>EAC</span> Command Center</h1></div>
   <div class="header-meta">
     <div class="time" id="current-time"></div>
     <div id="report-date">Loading...</div>
@@ -361,129 +360,495 @@
   </div>
 </div>
 
-<!-- Summary Stats -->
-<div class="summary-bar" id="summary-bar">
-  <div class="stat-card ok"><div class="number" id="stat-completed">--</div><div class="label">Completed This Week</div></div>
-  <div class="stat-card warning"><div class="number" id="stat-open">--</div><div class="label">Open Items</div></div>
-  <div class="stat-card error"><div class="number" id="stat-blockers">--</div><div class="label">Needs Attention</div></div>
-  <div class="stat-card accent"><div class="number" id="stat-services">--</div><div class="label">Services Online</div></div>
-</div>
+<!-- Tab Navigation -->
+<nav class="tab-bar">
+  <button class="tab-btn" data-tab="overview" id="tab-btn-overview">Agents<span class="tab-badge" id="badge-agents" style="display:none"></span></button>
+  <button class="tab-btn active" data-tab="operations" id="tab-btn-operations">Operations<span class="tab-badge" id="badge-ops" style="display:none"></span></button>
+  <button class="tab-btn" data-tab="hll" id="tab-btn-hll">Soundwave / HLL<span class="tab-badge warning" id="badge-hll" style="display:none"></span></button>
+  <button class="tab-btn" data-tab="strategy" id="tab-btn-strategy">Strategy<span class="tab-badge info" id="badge-strategy" style="display:none"></span></button>
+  <button class="tab-btn" data-tab="pipeline" id="tab-btn-pipeline">Pipeline<span class="tab-badge accent" id="badge-pipeline" style="display:none"></span></button>
+</nav>
 
-<!-- Timeline Chart -->
-<div class="chart-container">
-  <h2>Weekly Progress</h2>
-  <div class="chart-wrapper">
-    <canvas id="timeline-chart"></canvas>
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- Tab 1: Agent Overview -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-overview">
+  <div class="summary-bar" id="fleet-stats"></div>
+
+  <!-- Tier 1: Core Runtime -->
+  <div class="tier-section" id="tier1-section">
+    <div class="tier-header" onclick="toggleTier('tier1-section')">
+      <h3>Tier 1: Core Runtime (PM2)</h3>
+      <span class="tier-badge ok" id="tier1-badge">--</span>
+      <span class="tier-chevron">&#9662;</span>
+    </div>
+    <div class="tier-body">
+      <div class="agent-grid" id="agent-grid"></div>
+      <div class="section-card">
+        <div class="section-header" onclick="toggleSection(this)">
+          <h3>Dispatch Queue (24h)</h3>
+          <span class="chevron">&#9662;</span>
+        </div>
+        <div class="section-body">
+          <table class="dispatch-table" id="dispatch-table">
+            <thead><tr><th>Worker</th><th>Queued</th><th>Running</th><th>Done</th><th>Failed</th><th>Avg Time</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tier 2: Scheduled Infrastructure -->
+  <div class="tier-section collapsed" id="tier2-section">
+    <div class="tier-header" onclick="toggleTier('tier2-section')">
+      <h3>Tier 2: Scheduled Infrastructure</h3>
+      <span class="tier-badge info" id="tier2-badge">--</span>
+      <span class="tier-chevron">&#9662;</span>
+    </div>
+    <div class="tier-body">
+      <div id="tier2-services"></div>
+      <div class="cron-grid" id="tier2-cron"></div>
+    </div>
+  </div>
+
+  <!-- Tier 3: On-Demand & Pipeline -->
+  <div class="tier-section collapsed" id="tier3-section">
+    <div class="tier-header" onclick="toggleTier('tier3-section')">
+      <h3>Tier 3: On-Demand & Pipeline</h3>
+      <span class="tier-badge info" id="tier3-badge">--</span>
+      <span class="tier-chevron">&#9662;</span>
+    </div>
+    <div class="tier-body">
+      <div class="component-grid" id="tier3-grid"></div>
+    </div>
+  </div>
+
+  <!-- ST Metro Loop -->
+  <div class="metro-bar" id="metro-bar">
+    <h3>ST Metro Loop</h3>
+    <div class="metro-items" id="metro-items"></div>
+  </div>
+
+  <!-- Scheduled Tasks -->
+  <div class="section-card">
+    <div class="section-header" onclick="toggleSection(this)">
+      <h3>Scheduled Tasks (Bot)</h3>
+      <span class="chevron">&#9662;</span>
+    </div>
+    <div class="section-body" id="scheduled-tasks-body"></div>
   </div>
 </div>
 
-<!-- Priority Picker -->
-<div class="priority-section">
-  <h2>Today's Work Order</h2>
-  <div class="subtitle">Check items to work on. Drag to reorder priority. Saves automatically.</div>
-  <ul class="priority-list" id="priority-list"></ul>
-  <div class="priority-output" id="priority-output"></div>
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- Tab 2: Operations (current v2 dashboard) -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-content active" id="tab-operations">
+  <div class="summary-bar" id="summary-bar">
+    <div class="stat-card ok"><div class="number" id="stat-completed">--</div><div class="label">Completed This Week</div></div>
+    <div class="stat-card warning"><div class="number" id="stat-open">--</div><div class="label">Open Items</div></div>
+    <div class="stat-card error"><div class="number" id="stat-blockers">--</div><div class="label">Needs Attention</div></div>
+    <div class="stat-card accent"><div class="number" id="stat-services">--</div><div class="label">Services Online</div></div>
+  </div>
+  <div class="chart-container">
+    <h2>Weekly Progress</h2>
+    <div class="chart-wrapper"><canvas id="timeline-chart"></canvas></div>
+  </div>
+  <div class="priority-section">
+    <h2>Today's Work Order</h2>
+    <div class="subtitle">Check items to work on. Drag to reorder priority. Saves automatically.</div>
+    <ul class="priority-list" id="priority-list"></ul>
+    <div class="priority-output" id="priority-output"></div>
+  </div>
+  <div class="sections-grid" id="sections-grid"></div>
 </div>
 
-<!-- Report Sections -->
-<div class="sections-grid" id="sections-grid"></div>
-
-<div class="footer">
-  Data Dashboard v2 -- M2AI Command Center -- Live polling (30s) from report JSON
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- Tab 3: Soundwave / HLL -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-hll">
+  <div class="summary-bar" id="memory-stats"></div>
+  <div class="extraction-bar" id="extraction-bar"></div>
+  <div class="two-col">
+    <div class="section-card" id="soundwave-outputs-card">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h3>Soundwave Outputs</h3>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="count" id="sw-count">0</span>
+          <span class="chevron">&#9662;</span>
+        </div>
+      </div>
+      <div class="section-body" id="soundwave-outputs"></div>
+    </div>
+    <div class="section-card" id="decisions-card">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h3>Decisions Log</h3>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="count" id="dec-count">0</span>
+          <span class="chevron">&#9662;</span>
+        </div>
+      </div>
+      <div class="section-body" id="decisions-log"></div>
+    </div>
+  </div>
+  <div class="stat-inline" id="session-stats"></div>
+  <div class="section-card">
+    <div class="section-header" onclick="toggleSection(this)">
+      <h3>Learning Queue</h3>
+      <span class="chevron">&#9662;</span>
+    </div>
+    <div class="section-body" id="learning-queue"></div>
+  </div>
+  <div class="section-card">
+    <div class="section-header" onclick="toggleSection(this)">
+      <h3>Recent Memories</h3>
+      <span class="chevron">&#9662;</span>
+    </div>
+    <div class="section-body" id="recent-memories"></div>
+  </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- Tab 4: Strategy (Christensen Filter) -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-strategy">
+  <div class="summary-bar" id="strategy-stats"></div>
+  <div class="section-card">
+    <div class="section-header" onclick="toggleSection(this)">
+      <h3>Christensen Filter Evaluations</h3>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="count" id="eval-count">0</span>
+        <span class="chevron">&#9662;</span>
+      </div>
+    </div>
+    <div class="section-body" id="evaluations-list"></div>
+  </div>
+  <div class="section-card">
+    <div class="section-header" onclick="toggleSection(this)">
+      <h3>IdeaForge Pipeline</h3>
+      <span class="chevron">&#9662;</span>
+    </div>
+    <div class="section-body" id="ideas-pipeline"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- Tab 5: Pipeline -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-pipeline">
+  <div class="summary-bar" id="pipeline-stats"></div>
+
+  <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;" id="pipeline-effort"></div>
+
+  <!-- Swim lanes -->
+  <div class="tier-section" id="pl-active-section">
+    <div class="tier-header" onclick="toggleTier('pl-active-section')">
+      <h3>Active</h3>
+      <span class="tier-badge ok" id="pl-active-badge">0</span>
+      <span class="tier-chevron">&#9662;</span>
+    </div>
+    <div class="tier-body" id="pl-active-body"></div>
+  </div>
+
+  <div class="tier-section" id="pl-queued-section">
+    <div class="tier-header" onclick="toggleTier('pl-queued-section')">
+      <h3>Queued</h3>
+      <span class="tier-badge info" id="pl-queued-badge">0</span>
+      <span class="tier-chevron">&#9662;</span>
+    </div>
+    <div class="tier-body" id="pl-queued-body"></div>
+  </div>
+
+  <div class="tier-section" id="pl-research-section">
+    <div class="tier-header" onclick="toggleTier('pl-research-section')">
+      <h3>Research</h3>
+      <span class="tier-badge warning" id="pl-research-badge">0</span>
+      <span class="tier-chevron">&#9662;</span>
+    </div>
+    <div class="tier-body" id="pl-research-body"></div>
+  </div>
+
+  <div class="tier-section collapsed" id="pl-shelved-section">
+    <div class="tier-header" onclick="toggleTier('pl-shelved-section')">
+      <h3>Shelved</h3>
+      <span class="tier-badge warning" id="pl-shelved-badge">0</span>
+      <span class="tier-chevron">&#9662;</span>
+    </div>
+    <div class="tier-body" id="pl-shelved-body"></div>
+  </div>
+
+  <div class="tier-section collapsed" id="pl-killed-section">
+    <div class="tier-header" onclick="toggleTier('pl-killed-section')">
+      <h3>Killed</h3>
+      <span class="tier-badge error" id="pl-killed-badge">0</span>
+      <span class="tier-chevron">&#9662;</span>
+    </div>
+    <div class="tier-body" id="pl-killed-body"></div>
+  </div>
+
+  <div class="section-card" style="margin-top:16px;">
+    <div class="section-header" onclick="toggleSection(this)">
+      <h3>Recent Decisions</h3>
+      <span class="chevron">&#9662;</span>
+    </div>
+    <div class="section-body" id="pl-decisions-body"></div>
+  </div>
+</div>
+
+<div class="footer">EAC Command Center v3 -- M2AI -- Live polling (30s)</div>
 
 <script>
-// --- State ---
+// ═══════════════════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════════════════
 let reportData = null;
 let timelineData = null;
 let priorities = JSON.parse(localStorage.getItem('data-dashboard-priorities') || '[]');
-let lastLoadTime = null;
 let lastReportTimestamp = null;
-const REFRESH_INTERVAL = 30000; // 30 seconds
+const REFRESH_INTERVAL = 30000;
 
-// --- Clock ---
+// ═══════════════════════════════════════════════════════════════════════
+// Tab Switching
+// ═══════════════════════════════════════════════════════════════════════
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    location.hash = btn.dataset.tab;
+  });
+});
+
+// Restore tab from URL hash
+const hash = location.hash.replace('#', '');
+if (hash) {
+  const btn = document.querySelector(`.tab-btn[data-tab="${hash}"]`);
+  if (btn) btn.click();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Clock + Live Status
+// ═══════════════════════════════════════════════════════════════════════
 function updateClock() {
-  const now = new Date();
-  document.getElementById('current-time').textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  document.getElementById('current-time').textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 setInterval(updateClock, 1000);
 updateClock();
 
-// --- Live Status ---
 function updateLiveStatus(state, msg) {
-  const dot = document.getElementById('live-dot');
-  const label = document.getElementById('live-label');
-  dot.className = 'live-dot' + (state === 'ok' ? '' : ' ' + state);
-  label.textContent = msg;
+  document.getElementById('live-dot').className = 'live-dot' + (state === 'ok' ? '' : ' ' + state);
+  document.getElementById('live-label').textContent = msg;
 }
 
 function manualRefresh() {
   const btn = document.getElementById('refresh-btn');
-  btn.classList.add('loading');
-  btn.textContent = '...';
-  loadData().finally(() => {
-    btn.classList.remove('loading');
-    btn.textContent = 'refresh';
-  });
+  btn.classList.add('loading'); btn.textContent = '...';
+  loadData().finally(() => { btn.classList.remove('loading'); btn.textContent = 'refresh'; });
 }
 
-// --- Load Data ---
+// ═══════════════════════════════════════════════════════════════════════
+// Data Loading
+// ═══════════════════════════════════════════════════════════════════════
 async function loadData() {
   try {
-    // Cache-bust to get fresh data on every poll
-    const cacheBust = Date.now();
-    let reportResp = await fetch(`reports/latest.json?t=${cacheBust}`);
-    if (!reportResp.ok) {
+    const t = Date.now();
+    let resp = await fetch(`reports/latest.json?t=${t}`);
+    if (!resp.ok) {
       const today = new Date().toISOString().slice(0, 10);
-      reportResp = await fetch(`reports/${today}.json?t=${cacheBust}`);
+      resp = await fetch(`reports/${today}.json?t=${t}`);
     }
-    if (reportResp.ok) {
-      const newData = await reportResp.json();
-      const newTimestamp = newData.timestamp;
-
-      // Only re-render if data actually changed
-      if (newTimestamp !== lastReportTimestamp) {
-        reportData = newData;
-        lastReportTimestamp = newTimestamp;
-      }
+    if (resp.ok) {
+      const d = await resp.json();
+      if (d.timestamp !== lastReportTimestamp) { reportData = d; lastReportTimestamp = d.timestamp; }
     }
-
-    // Load timeline
-    const timelineResp = await fetch(`reports/timeline.json?t=${cacheBust}`);
-    if (timelineResp.ok) {
-      timelineData = await timelineResp.json();
-    }
-
-    lastLoadTime = new Date();
+    const tlResp = await fetch(`reports/timeline.json?t=${t}`);
+    if (tlResp.ok) timelineData = await tlResp.json();
     render();
-
-    // Calculate data freshness
-    const reportAge = reportData ? (Date.now() - new Date(reportData.timestamp).getTime()) / 1000 : Infinity;
-    if (reportAge < 120) {
-      updateLiveStatus('ok', `live -- ${Math.round(reportAge)}s ago`);
-    } else if (reportAge < 600) {
-      updateLiveStatus('ok', `${Math.round(reportAge / 60)}m ago`);
-    } else {
-      updateLiveStatus('stale', `${Math.round(reportAge / 60)}m stale`);
-    }
+    const age = reportData ? (Date.now() - new Date(reportData.timestamp).getTime()) / 1000 : Infinity;
+    if (age < 120) updateLiveStatus('ok', `live -- ${Math.round(age)}s ago`);
+    else if (age < 600) updateLiveStatus('ok', `${Math.round(age / 60)}m ago`);
+    else updateLiveStatus('stale', `${Math.round(age / 60)}m stale`);
   } catch (e) {
-    console.error('Failed to load data:', e);
+    console.error('Load failed:', e);
     updateLiveStatus('error', 'fetch failed');
-    document.getElementById('report-date').textContent = 'Error loading reports';
   }
 }
 
-// --- Render ---
+// ═══════════════════════════════════════════════════════════════════════
+// Render (dispatches to per-tab renderers)
+// ═══════════════════════════════════════════════════════════════════════
 function render() {
   if (!reportData) return;
-
-  // Report date
   const d = new Date(reportData.timestamp);
   document.getElementById('report-date').textContent =
     d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) +
     ' at ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-  // Summary stats
+  renderTab1();
+  renderTab2();
+  renderTab3();
+  renderTab4();
+  renderTab5();
+  renderBadges();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Tab 1: Agent Overview
+// ═══════════════════════════════════════════════════════════════════════
+function toggleTier(id) {
+  document.getElementById(id).classList.toggle('collapsed');
+}
+
+function renderTab1() {
+  const agents = reportData.tabs?.agents;
+  if (!agents) return;
+
+  // Fleet stats (summary across all tiers)
+  const procs = agents.pm2_processes || [];
+  const online = procs.filter(p => p.status === 'online').length;
+  const errored = procs.filter(p => p.status !== 'online' && p.status !== 'stopped').length;
+  const stopped = procs.length - online - errored;
+  const totalQueued = Object.values(agents.queue_stats || {}).reduce((s, q) => s + q.queued + q.running, 0);
+  const t2 = agents.tier2_scheduled || {};
+  const t3 = agents.tier3_components || [];
+  const cronCount = (t2.cron_jobs || []).length;
+  const t3Active = t3.filter(c => c.status === 'active' || c.status === 'ready').length;
+
+  document.getElementById('fleet-stats').innerHTML = `
+    <div class="stat-card ok"><div class="number">${online}</div><div class="label">PM2 Online</div></div>
+    <div class="stat-card error"><div class="number">${errored + stopped}</div><div class="label">Down</div></div>
+    <div class="stat-card info"><div class="number">${cronCount}</div><div class="label">Cron Jobs</div></div>
+    <div class="stat-card accent"><div class="number">${totalQueued}</div><div class="label">In Queue</div></div>
+  `;
+
+  // ── Tier 1: PM2 Agent Cards ──
+  const tier1Badge = document.getElementById('tier1-badge');
+  tier1Badge.textContent = `${online}/${procs.length} online`;
+  tier1Badge.className = 'tier-badge ' + (online === procs.length ? 'ok' : errored > 0 ? 'error' : 'warning');
+
+  const grid = document.getElementById('agent-grid');
+  const allAgentIds = ['data', 'redshirt', 'starscream', 'ravage', 'soundwave', 'astrotrain'];
+  grid.innerHTML = allAgentIds.map(aid => {
+    const proc = procs.find(p => p.agent_id === aid);
+    const qKey = (aid === 'data' || aid === 'redshirt') ? 'default' : aid;
+    const qs = agents.queue_stats?.[qKey] || {};
+    const status = proc?.status || 'stopped';
+    const statusClass = status === 'online' ? 'online' : status === 'stopped' ? 'stopped' : 'errored';
+    const uptimeStr = proc ? formatDuration(proc.uptime_seconds) : '--';
+    const memStr = proc ? proc.memory_mb + 'MB' : '--';
+    const lastDone = qs.last_completed_at ? timeAgo(qs.last_completed_at) : 'never';
+    const role = AGENT_META[aid]?.role || proc?.role || aid;
+    const name = AGENT_META[aid]?.name || capitalize(aid);
+    return `
+      <div class="agent-card ${statusClass}">
+        <div class="agent-name"><span class="status-dot ${statusClass}"></span>${name}</div>
+        <div class="agent-role">${role}</div>
+        <div class="agent-mid">
+          <div class="agent-visual">${makeAvatar(aid)}</div>
+          ${makeEffDonut(qs.total_completed || 0, qs.total_failed || 0)}
+        </div>
+        <div class="agent-stat"><b>${uptimeStr}</b> | <b>${memStr}</b> | Q:<b>${qs.queued || 0}</b></div>
+        <div class="agent-stat">Done: <b>${lastDone}</b></div>
+      </div>`;
+  }).join('');
+
+  // Dispatch table
+  const tbody = document.querySelector('#dispatch-table tbody');
+  const WORKER_NAMES = { default: 'Red Shirt', starscream: 'Starscream', ravage: 'Ravage', soundwave: 'Soundwave', astrotrain: 'Astrotrain' };
+  tbody.innerHTML = Object.entries(agents.queue_stats || {}).map(([w, q]) => `
+    <tr>
+      <td style="font-weight:600;font-family:Inter">${WORKER_NAMES[w] || capitalize(w)}</td>
+      <td>${q.queued}</td><td>${q.running}</td>
+      <td>${q.completed_24h}</td><td>${q.failed_24h}</td>
+      <td>${q.avg_duration_seconds ? formatDuration(q.avg_duration_seconds) : '--'}</td>
+    </tr>
+  `).join('');
+
+  // ── Tier 2: Scheduled Infrastructure ──
+  const tier2Badge = document.getElementById('tier2-badge');
+  const svcDown = (t2.services || []).filter(s => !s.active).length;
+  tier2Badge.textContent = `${cronCount} cron` + (svcDown > 0 ? ` | ${svcDown} svc down` : '');
+  tier2Badge.className = 'tier-badge ' + (svcDown > 0 ? 'warning' : 'info');
+
+  const t2Services = document.getElementById('tier2-services');
+  const svcs = t2.services || [];
+  if (svcs.length > 0) {
+    t2Services.innerHTML = svcs.map(s => `
+      <div style="margin-bottom:12px;padding:8px 14px;background:var(--card);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;gap:10px;">
+        <span class="status-dot ${s.active ? 'online' : 'stopped'}"></span>
+        <b style="font-size:13px">${s.name}</b>
+        <span style="font-size:12px;color:var(--text-secondary)">${s.active ? 'Active' : 'Inactive'} | ${s.enabled ? 'Enabled' : 'Disabled'}</span>
+      </div>
+    `).join('');
+  }
+
+  const t2Cron = document.getElementById('tier2-cron');
+  t2Cron.innerHTML = (t2.cron_jobs || []).map(j => `
+    <div class="cron-card">
+      <span class="status-dot online" style="flex-shrink:0"></span>
+      <div style="flex:1;min-width:0">
+        <div class="cron-label">${j.label}</div>
+        <div class="cron-detail">${j.role}</div>
+      </div>
+      <div class="cron-schedule">${j.schedule}</div>
+    </div>
+  `).join('');
+
+  // ── Tier 3: On-Demand & Pipeline ──
+  const tier3Badge = document.getElementById('tier3-badge');
+  tier3Badge.textContent = `${t3Active}/${t3.length} ready`;
+  tier3Badge.className = 'tier-badge ' + (t3Active === t3.length ? 'ok' : 'info');
+
+  const t3Grid = document.getElementById('tier3-grid');
+  t3Grid.innerHTML = t3.map(c => {
+    const statusClass = c.status === 'active' ? 'active' : c.status === 'ready' ? 'ready' : c.status === 'error' ? 'error' : 'missing';
+    const statusLabel = c.status === 'active' ? 'Active' : c.status === 'ready' ? 'Ready' : c.status === 'needs_setup' ? 'Needs Setup' : c.status === 'error' ? 'Error' : c.status;
+    const lastStr = c.last_activity ? timeAgo(typeof c.last_activity === 'string' ? Math.floor(new Date(c.last_activity).getTime() / 1000) : c.last_activity) : 'unknown';
+    return `
+      <div class="component-card ${statusClass}">
+        <div class="comp-name">${c.name}</div>
+        <div class="comp-role">${c.role}</div>
+        <div class="comp-stat">Status: <b>${statusLabel}</b></div>
+        ${c.detail ? `<div class="comp-stat">Detail: <b>${c.detail}</b></div>` : ''}
+        <div class="comp-stat">Last activity: <b>${lastStr}</b></div>
+      </div>`;
+  }).join('');
+
+  // ── Metro bar ──
+  const metro = agents.metroplex;
+  const pl = agents.st_metro_pipeline || {};
+  const metroItems = document.getElementById('metro-items');
+  if (metro && !metro.error) {
+    const mStatus = metro.process_running ? '<span class="status-dot online"></span>Running' : '<span class="status-dot stopped"></span>Stopped';
+    metroItems.innerHTML = `
+      <div class="metro-item"><b>Metroplex:</b> ${mStatus}</div>
+      <div class="metro-item"><b>Queue:</b> ${metro.priority_queue?.pending || 0} pending, ${metro.priority_queue?.dispatched || 0} dispatched</div>
+      <div class="metro-item"><b>Cycles:</b> ${metro.total_cycles || 0}</div>
+      <div class="metro-item"><b>Pipeline:</b> <span style="color:${pl.pipeline_health === 'healthy' ? 'var(--ok)' : pl.pipeline_health === 'degraded' ? 'var(--warning)' : 'var(--error)'}">${pl.pipeline_health || 'unknown'}</span></div>
+      <div class="metro-item"><b>Research cron:</b> ${pl.research_agents_cron ? '<span class="status-dot online"></span>Active' : '<span class="status-dot stopped"></span>Missing'}</div>
+    `;
+  } else {
+    metroItems.innerHTML = '<div class="metro-item">Metroplex: offline or DB unavailable</div>';
+  }
+
+  // ── Scheduled Tasks (bot-level) ──
+  const stBody = document.getElementById('scheduled-tasks-body');
+  stBody.innerHTML = (agents.scheduled_tasks || []).map(t => `
+    <div class="item" onclick="toggleItem(this)">
+      <div class="item-dot ${t.status === 'active' ? 'ok' : 'warning'}"></div>
+      <div class="item-content">
+        <div class="item-text">${t.prompt_preview}</div>
+        <div class="item-detail">Schedule: ${t.schedule} | Status: ${t.status}${t.next_run ? ' | Next: ' + new Date(t.next_run * 1000).toLocaleString() : ''}</div>
+      </div>
+    </div>
+  `).join('') || '<div class="item"><div class="item-content"><div class="item-text" style="color:var(--text-secondary)">No scheduled tasks</div></div></div>';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Tab 2: Operations (existing v2 logic)
+// ═══════════════════════════════════════════════════════════════════════
+function renderTab2() {
   const allItems = Object.values(reportData.sections).flatMap(s => s.items);
   const okCount = allItems.filter(i => i.status === 'ok').length;
   const warnCount = allItems.filter(i => i.status === 'warning').length;
@@ -495,97 +860,46 @@ function render() {
   document.getElementById('stat-blockers').textContent = errCount;
   document.getElementById('stat-services').textContent = services;
 
-  // Timeline chart
   renderChart();
-
-  // Sections
   renderSections();
-
-  // Priority picker
   renderPriorities();
 }
 
-// --- Chart ---
 let chart = null;
 function renderChart() {
   if (!timelineData?.weekly) return;
-
   const ctx = document.getElementById('timeline-chart').getContext('2d');
   if (chart) chart.destroy();
-
   const labels = timelineData.weekly.map(d => d.day + ' ' + d.date.slice(5));
   const data = timelineData.weekly.map(d => d.completed);
   const colors = data.map((v, i) => i === data.length - 1 ? '#E8735A' : '#6366F1');
-
   chart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Items Completed',
-        data,
-        backgroundColor: colors,
-        borderRadius: 6,
-        borderSkipped: false,
-        barThickness: 40,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            afterBody: function(ctx) {
-              const idx = ctx[0].dataIndex;
-              const items = timelineData.weekly[idx].items;
-              return items.map(i => '- ' + i).join('\n');
-            }
-          }
-        }
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: { stepSize: 2, font: { family: 'JetBrains Mono', size: 11 } },
-          grid: { color: '#F3F4F6' }
-        },
-        x: {
-          ticks: { font: { family: 'Inter', size: 12 } },
-          grid: { display: false }
-        }
-      }
-    }
+    type: 'bar', data: { labels, datasets: [{ label: 'Items Completed', data, backgroundColor: colors, borderRadius: 6, borderSkipped: false, barThickness: 40 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 2, font: { family: 'JetBrains Mono', size: 11 } }, grid: { color: '#F3F4F6' } },
+               x: { ticks: { font: { family: 'Inter', size: 12 } }, grid: { display: false } } } }
   });
 }
 
-// --- Sections ---
 function renderSections() {
   const grid = document.getElementById('sections-grid');
   grid.innerHTML = '';
-
-  const sectionOrder = ['service_health', 'pipeline', 'soundwave', 'activity', 'uncommitted', 'priorities', 'unfinished'];
-
-  for (const key of sectionOrder) {
+  const order = ['service_health', 'pipeline', 'soundwave', 'activity', 'uncommitted', 'priorities', 'unfinished'];
+  for (const key of order) {
     const section = reportData.sections[key];
     if (!section) continue;
-
     const card = document.createElement('div');
     card.className = 'section-card' + (key === 'soundwave' ? ' soundwave-card' : '');
-
-    const errCount = section.items.filter(i => i.status === 'error').length;
-    const warnCount = section.items.filter(i => i.status === 'warning').length;
-    let badge = section.items.length;
+    const errC = section.items.filter(i => i.status === 'error').length;
+    const warnC = section.items.filter(i => i.status === 'warning').length;
     let badgeStyle = '';
-    if (errCount > 0) badgeStyle = 'background:#FEF2F2;color:#EF4444;';
-    else if (warnCount > 0) badgeStyle = 'background:#FFFBEB;color:#F59E0B;';
-
+    if (errC > 0) badgeStyle = 'background:#FEF2F2;color:#EF4444;';
+    else if (warnC > 0) badgeStyle = 'background:#FFFBEB;color:#F59E0B;';
     card.innerHTML = `
       <div class="section-header" onclick="toggleSection(this)">
         <h3>${section.title}</h3>
         <div style="display:flex;align-items:center;gap:8px;">
-          <span class="count" style="${badgeStyle}">${badge}</span>
+          <span class="count" style="${badgeStyle}">${section.items.length}</span>
           <span class="chevron">&#9662;</span>
         </div>
       </div>
@@ -599,149 +913,390 @@ function renderSections() {
             </div>
           </div>
         `).join('')}
-      </div>
-    `;
-
+      </div>`;
     grid.appendChild(card);
   }
 }
 
-function toggleSection(header) {
-  header.parentElement.classList.toggle('collapsed');
-}
-
-function toggleItem(item) {
-  item.classList.toggle('expanded');
-}
-
-// --- Priority Picker ---
+// Priority picker (unchanged from v2)
 function getPriorityItems() {
-  // Merge priorities from report + unfinished business
   const items = [];
-  if (reportData.sections.priorities) {
-    reportData.sections.priorities.items.forEach(i => items.push(i.text));
-  }
-  if (reportData.sections.unfinished) {
-    reportData.sections.unfinished.items.forEach(i => items.push(i.text));
-  }
+  if (reportData.sections.priorities) reportData.sections.priorities.items.forEach(i => items.push(i.text));
+  if (reportData.sections.unfinished) reportData.sections.unfinished.items.forEach(i => items.push(i.text));
   return [...new Set(items)];
 }
-
 function renderPriorities() {
   const list = document.getElementById('priority-list');
   const allItems = getPriorityItems();
-
-  // Merge with saved priorities
   const saved = priorities.filter(p => allItems.includes(p.text));
   const unsaved = allItems.filter(t => !saved.find(s => s.text === t));
   const merged = [...saved, ...unsaved.map(t => ({ text: t, checked: false }))];
-
   list.innerHTML = '';
   merged.forEach((item, idx) => {
     const li = document.createElement('li');
-    li.className = 'priority-item';
-    li.draggable = true;
-    li.dataset.index = idx;
-
-    const rankNum = item.checked ? (merged.filter((m, i) => m.checked && i <= idx).length) : '';
+    li.className = 'priority-item'; li.draggable = true; li.dataset.index = idx;
+    const rankNum = item.checked ? merged.filter((m, i) => m.checked && i <= idx).length : '';
     const rankClass = item.checked ? '' : 'unranked';
-
-    li.innerHTML = `
-      <span class="drag-handle" title="Drag to reorder">&#x2630;</span>
-      <div class="rank ${rankClass}">${rankNum || '-'}</div>
-      <input type="checkbox" ${item.checked ? 'checked' : ''} onchange="togglePriority(${idx})">
-      <label onclick="togglePriority(${idx})">${item.text}</label>
-    `;
-
-    // Drag events
-    li.addEventListener('dragstart', onDragStart);
-    li.addEventListener('dragover', onDragOver);
-    li.addEventListener('drop', onDrop);
-    li.addEventListener('dragend', onDragEnd);
-
+    li.innerHTML = `<span class="drag-handle" title="Drag">&#x2630;</span><div class="rank ${rankClass}">${rankNum || '-'}</div><input type="checkbox" ${item.checked ? 'checked' : ''} onchange="togglePriority(${idx})"><label onclick="togglePriority(${idx})">${item.text}</label>`;
+    li.addEventListener('dragstart', onDragStart); li.addEventListener('dragover', e => e.preventDefault());
+    li.addEventListener('drop', onDrop); li.addEventListener('dragend', onDragEnd);
     list.appendChild(li);
   });
-
-  // Update output
   updatePriorityOutput(merged);
 }
-
 function togglePriority(idx) {
   const allItems = getPriorityItems();
   const saved = priorities.length ? priorities : allItems.map(t => ({ text: t, checked: false }));
-
-  if (saved[idx]) {
-    saved[idx].checked = !saved[idx].checked;
-  }
-
-  priorities = saved;
-  localStorage.setItem('data-dashboard-priorities', JSON.stringify(priorities));
+  if (saved[idx]) saved[idx].checked = !saved[idx].checked;
+  priorities = saved; localStorage.setItem('data-dashboard-priorities', JSON.stringify(priorities));
   renderPriorities();
 }
-
 function updatePriorityOutput(merged) {
   const output = document.getElementById('priority-output');
   const checked = merged.filter(m => m.checked);
-
-  if (checked.length === 0) {
-    output.classList.remove('visible');
-    return;
-  }
-
+  if (!checked.length) { output.classList.remove('visible'); return; }
   output.classList.add('visible');
   output.textContent = "TODAY'S FOCUS\n" + checked.map((c, i) => `${i + 1}. ${c.text}`).join('\n');
 }
-
-// --- Drag & Drop ---
 let dragIdx = null;
-
-function onDragStart(e) {
-  dragIdx = parseInt(e.currentTarget.dataset.index);
-  e.currentTarget.classList.add('dragging');
-}
-
-function onDragOver(e) {
-  e.preventDefault();
-}
-
+function onDragStart(e) { dragIdx = parseInt(e.currentTarget.dataset.index); e.currentTarget.classList.add('dragging'); }
 function onDrop(e) {
-  e.preventDefault();
-  const dropIdx = parseInt(e.currentTarget.dataset.index);
+  e.preventDefault(); const dropIdx = parseInt(e.currentTarget.dataset.index);
   if (dragIdx === null || dragIdx === dropIdx) return;
-
   const allItems = getPriorityItems();
   const items = priorities.length ? [...priorities] : allItems.map(t => ({ text: t, checked: false }));
-
-  const [moved] = items.splice(dragIdx, 1);
-  items.splice(dropIdx, 0, moved);
-
-  priorities = items;
-  localStorage.setItem('data-dashboard-priorities', JSON.stringify(priorities));
+  const [moved] = items.splice(dragIdx, 1); items.splice(dropIdx, 0, moved);
+  priorities = items; localStorage.setItem('data-dashboard-priorities', JSON.stringify(priorities));
   renderPriorities();
 }
+function onDragEnd(e) { e.currentTarget.classList.remove('dragging'); dragIdx = null; }
 
-function onDragEnd(e) {
-  e.currentTarget.classList.remove('dragging');
-  dragIdx = null;
+// ═══════════════════════════════════════════════════════════════════════
+// Tab 3: HLL
+// ═══════════════════════════════════════════════════════════════════════
+function renderTab3() {
+  const hll = reportData.tabs?.hll;
+  if (!hll) return;
+
+  // Memory stats
+  const ms = hll.memory_stats || {};
+  document.getElementById('memory-stats').innerHTML = `
+    <div class="stat-card info"><div class="number">${ms.total_memories || 0}</div><div class="label">Total Memories</div><div class="sub">${ms.semantic_today || 0} + ${ms.episodic_today || 0} today</div></div>
+    <div class="stat-card"><div class="number">${ms.semantic_count || 0}</div><div class="label">Semantic</div></div>
+    <div class="stat-card"><div class="number">${ms.episodic_count || 0}</div><div class="label">Episodic</div></div>
+    <div class="stat-card"><div class="number">${ms.vector_count || 0}</div><div class="label">Vectors</div></div>
+  `;
+
+  // Extraction
+  const ext = hll.extraction || {};
+  const covPct = ext.coverage_pct || 0;
+  const lastRun = ext.last_run_at ? timeAgo(ext.last_run_at) : 'never';
+  document.getElementById('extraction-bar').innerHTML = `
+    <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">EXTRACTION PIPELINE</div>
+    <div style="font-size:12px">Watermark: log #${ext.last_log_id || 0} / ${ext.total_log_entries || 0} | Facts: ${ext.facts_total || 0} | Last run: ${lastRun}</div>
+    <div class="progress-bar"><div class="fill" style="width:${covPct}%"></div></div>
+    <div style="font-size:11px;color:var(--text-secondary)">${covPct}% coverage</div>
+  `;
+
+  // Soundwave outputs
+  const swOuts = hll.soundwave_outputs || [];
+  document.getElementById('sw-count').textContent = swOuts.length;
+  document.getElementById('soundwave-outputs').innerHTML = swOuts.map(o => {
+    const dur = o.duration_seconds ? formatDuration(o.duration_seconds) : '--';
+    const statusColor = o.status === 'completed' ? 'ok' : o.status === 'failed' ? 'error' : 'warning';
+    return `<div class="item" onclick="toggleItem(this)">
+      <div class="item-dot ${statusColor}"></div>
+      <div class="item-content">
+        <div class="item-text">${o.prompt_preview || 'Unknown task'}</div>
+        <div class="item-detail">Status: ${o.status} | Duration: ${dur}${o.result_preview ? '<br>' + o.result_preview : ''}</div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty-state">No Soundwave outputs yet</div>';
+
+  // Decisions
+  const decs = hll.decisions || [];
+  document.getElementById('dec-count').textContent = decs.length;
+  document.getElementById('decisions-log').innerHTML = decs.map(d => `
+    <div class="item" onclick="toggleItem(this)">
+      <div class="item-dot info"></div>
+      <div class="item-content">
+        <div class="item-text">${(d.content || '').slice(0, 80)}</div>
+        <div class="item-detail">${d.content || ''}<br><span style="color:var(--text-secondary)">${d.decided_at ? new Date(d.decided_at * 1000).toLocaleString() : ''}</span></div>
+      </div>
+    </div>
+  `).join('') || '<div class="empty-state">No decisions detected yet</div>';
+
+  // Session stats
+  const ss = hll.session_stats || {};
+  document.getElementById('session-stats').innerHTML = `
+    <div class="stat-pair"><div class="stat-value">${ss.sessions_7d || 0}</div><div class="stat-label">Sessions (7d)</div></div>
+    <div class="stat-pair"><div class="stat-value">${ss.turns_7d || 0}</div><div class="stat-label">Turns</div></div>
+    <div class="stat-pair"><div class="stat-value">$${(ss.cost_7d || 0).toFixed(2)}</div><div class="stat-label">Cost</div></div>
+    <div class="stat-pair"><div class="stat-value">${ss.compactions_7d || 0}</div><div class="stat-label">Compactions</div></div>
+  `;
+
+  // Learning queue
+  const lq = hll.learning_queue || [];
+  document.getElementById('learning-queue').innerHTML = lq.map(l => `
+    <div class="item" onclick="toggleItem(this)">
+      <div class="item-dot info"></div>
+      <div class="item-content">
+        <div class="item-text">${l.title || 'Signal'}</div>
+        <div class="item-detail">Source: ${l.source || '?'} | Quality: ${l.quality_score ?? '?'} | ${l.surfaced_at || ''}<br>${l.summary || ''}</div>
+      </div>
+    </div>
+  `).join('') || '<div class="empty-state">No learning items</div>';
+
+  // Recent memories
+  const mems = hll.recent_memories || [];
+  document.getElementById('recent-memories').innerHTML = mems.map(m => `
+    <div class="item" onclick="toggleItem(this)">
+      <div class="item-dot ${m.sector === 'semantic' ? 'info' : 'ok'}"></div>
+      <div class="item-content">
+        <div class="item-text">[${m.sector}] ${m.content_preview}</div>
+        <div class="item-detail">Salience: ${m.salience} | Accessed: ${m.accessed_at ? timeAgo(m.accessed_at) : '?'}</div>
+      </div>
+    </div>
+  `).join('') || '<div class="empty-state">No memories yet</div>';
 }
 
-// --- Init ---
+// ═══════════════════════════════════════════════════════════════════════
+// Tab 4: Strategy
+// ═══════════════════════════════════════════════════════════════════════
+function renderTab4() {
+  const strat = reportData.tabs?.strategy;
+  if (!strat) return;
+
+  const stats = strat.stats || {};
+  const focusRate = stats.total > 0 ? Math.round((stats.passed / stats.total) * 100) : 0;
+  const overrideRate = stats.total > 0 ? Math.round((stats.overridden / stats.total) * 100) : 0;
+
+  document.getElementById('strategy-stats').innerHTML = `
+    <div class="stat-card accent"><div class="number">${stats.total || 0}</div><div class="label">Ideas Evaluated</div></div>
+    <div class="stat-card ok"><div class="number">${stats.passed || 0}</div><div class="label">Passed</div></div>
+    <div class="stat-card error"><div class="number">${stats.failed || 0}</div><div class="label">Rejected</div></div>
+    <div class="stat-card warning"><div class="number">${stats.overridden || 0}</div><div class="label">Overridden</div></div>
+    <div class="stat-card info"><div class="number">${focusRate}%</div><div class="label">Focus Rate</div></div>
+  `;
+
+  // Evaluations
+  const evals = strat.evaluations || [];
+  document.getElementById('eval-count').textContent = evals.length;
+  document.getElementById('evaluations-list').innerHTML = evals.length ? evals.map(e => `
+    <div class="item" onclick="toggleItem(this)" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="item-dot ${e.outcome}"></div>
+        <div class="item-content" style="flex:1">
+          <div class="item-text">${e.idea || 'Unknown idea'}</div>
+          <div style="margin-top:4px">
+            <span class="eval-outcome ${e.outcome}">${e.outcome}</span>
+            <span style="font-size:11px;color:var(--text-secondary);margin-left:8px">${e.created_at ? new Date(e.created_at * 1000).toLocaleDateString() : ''} | ${e.source || ''}</span>
+          </div>
+        </div>
+      </div>
+      <div class="item-detail" style="margin-top:8px;padding-left:18px">
+        ${e.job_to_do ? '<b>Job to do:</b> ' + e.job_to_do + '<br>' : ''}
+        ${e.serves_m2ai ? '<b>Serves M2AI:</b> ' + e.serves_m2ai + '<br>' : ''}
+        ${e.beachhead ? '<b>Beachhead:</b> ' + e.beachhead + '<br>' : ''}
+        ${e.reasoning ? '<b>Reasoning:</b> ' + e.reasoning : ''}
+      </div>
+    </div>
+  `).join('') : '<div class="empty-state">No Christensen filter evaluations yet.<br>Ideas will appear here as Data evaluates new proposals.</div>';
+
+  // Ideas pipeline
+  const ideas = strat.recent_ideas_pipeline || [];
+  document.getElementById('ideas-pipeline').innerHTML = ideas.length ? ideas.map(i => `
+    <div class="item" onclick="toggleItem(this)">
+      <div class="item-dot info"></div>
+      <div class="item-content">
+        <div class="item-text">${i.title || 'Untitled'}</div>
+        <div class="item-detail">Source: ${i.source || '?'} | Status: ${i.status || '?'} | ${i.created_at || ''}</div>
+      </div>
+    </div>
+  `).join('') : '<div class="empty-state">No ideas in the IdeaForge pipeline</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Tab 5: Pipeline
+// ═══════════════════════════════════════════════════════════════════════
+function renderTab5() {
+  const pl = reportData.tabs?.pipeline_tab;
+  if (!pl) return;
+
+  const stats = pl.stats || {};
+  const activeCount = stats.active || 0;
+  const queuedCount = stats.queued || 0;
+  const researchCount = stats.research || 0;
+  const shelvedCount = stats.shelved || 0;
+  const killedCount = stats.killed || 0;
+  const completedCount = stats.completed || 0;
+
+  // Stats bar
+  document.getElementById('pipeline-stats').innerHTML = `
+    <div class="stat-card ok"><div class="number">${activeCount}</div><div class="label">Active</div></div>
+    <div class="stat-card info"><div class="number">${queuedCount}</div><div class="label">Queued</div></div>
+    <div class="stat-card warning"><div class="number">${researchCount}</div><div class="label">Research</div></div>
+    <div class="stat-card accent"><div class="number">${completedCount}</div><div class="label">Completed</div></div>
+  `;
+
+  // Effort summary
+  document.getElementById('pipeline-effort').innerHTML = `
+    <div style="font-size:13px;padding:8px 14px;background:var(--card);border:1px solid var(--border);border-radius:8px;">
+      <b style="font-family:'JetBrains Mono',monospace">${pl.effort_total || 0}h</b>
+      <span style="color:var(--text-secondary)">total effort (active+queued+research)</span>
+    </div>
+    <div style="font-size:13px;padding:8px 14px;background:var(--card);border:1px solid var(--border);border-radius:8px;">
+      <b style="font-family:'JetBrains Mono',monospace">${pl.effort_queued || 0}h</b>
+      <span style="color:var(--text-secondary)">queued backlog</span>
+    </div>
+    ${pl.deadline_items?.length ? pl.deadline_items.map(d => `
+      <div style="font-size:13px;padding:8px 14px;background:var(--error-bg);border:1px solid var(--error);border-radius:8px;">
+        <b style="color:var(--error)">${d.deadline}</b>
+        <span style="color:var(--text-secondary)">${d.title}</span>
+      </div>
+    `).join('') : ''}
+  `;
+
+  // Render each swim lane
+  const lanes = ['active', 'queued', 'research', 'shelved', 'killed'];
+  const items = pl.items || [];
+
+  lanes.forEach(lane => {
+    const laneItems = items.filter(i => i.status === lane);
+    const badge = document.getElementById('pl-' + lane + '-badge');
+    badge.textContent = laneItems.length;
+
+    const body = document.getElementById('pl-' + lane + '-body');
+    body.innerHTML = laneItems.length ? laneItems.map(i => {
+      const tags = [];
+      if (i.tier) tags.push('<span class="tier-tag">' + i.tier + '</span>');
+      if (i.worker_type) tags.push('<span class="worker-tag">' + i.worker_type + '</span>');
+      if (i.effort_hours) tags.push(i.effort_hours + 'h');
+      if (i.deadline) tags.push('<span class="deadline-tag">' + i.deadline + '</span>');
+
+      return '<div class="pipeline-card ' + lane + '" onclick="this.classList.toggle(\'expanded\')">' +
+        '<div class="pl-title">' + i.title + '</div>' +
+        '<div class="pl-meta">' + tags.join('') + '</div>' +
+        (i.description ? '<div class="pl-desc">' + i.description + '</div>' : '') +
+        (i.shelved_reason ? '<div class="pl-shelved-info">Reason: ' + i.shelved_reason + (i.resume_trigger ? '<br>Resume: ' + i.resume_trigger : '') + '</div>' : '') +
+      '</div>';
+    }).join('') : '<div class="empty-state">No items</div>';
+  });
+
+  // Recent decisions
+  const decBody = document.getElementById('pl-decisions-body');
+  const decisions = pl.recent_decisions || [];
+  decBody.innerHTML = decisions.length ? decisions.slice(0, 15).map(d => {
+    const decClass = d.decision === 'complete' ? 'ok' : d.decision === 'kill' ? 'error' : d.decision === 'shelve' ? 'warning' : 'info';
+    return '<div class="item">' +
+      '<div class="item-dot ' + decClass + '"></div>' +
+      '<div class="item-content">' +
+        '<div class="item-text">' + (d.item_title || 'Unknown') + ' -- ' + d.decision + '</div>' +
+        '<div class="item-detail" style="display:block">' + (d.reason || '') + ' | ' + (d.decided_by || '') + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('') : '<div class="empty-state">No decisions recorded yet</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Tab Badges
+// ═══════════════════════════════════════════════════════════════════════
+function renderBadges() {
+  // Agents badge: non-online count
+  const procs = reportData.tabs?.agents?.pm2_processes || [];
+  const notOnline = procs.filter(p => p.status !== 'online').length;
+  const ab = document.getElementById('badge-agents');
+  if (notOnline > 0) { ab.textContent = notOnline; ab.style.display = 'inline'; ab.className = 'tab-badge'; }
+  else ab.style.display = 'none';
+
+  // Ops badge: error count
+  const errs = Object.values(reportData.sections || {}).flatMap(s => s.items).filter(i => i.status === 'error').length;
+  const ob = document.getElementById('badge-ops');
+  if (errs > 0) { ob.textContent = errs; ob.style.display = 'inline'; ob.className = 'tab-badge'; }
+  else ob.style.display = 'none';
+
+  // HLL badge: extraction coverage
+  const cov = reportData.tabs?.hll?.extraction?.coverage_pct || 0;
+  const hb = document.getElementById('badge-hll');
+  if (cov < 50) { hb.textContent = Math.round(cov) + '%'; hb.style.display = 'inline'; }
+  else hb.style.display = 'none';
+
+  // Strategy badge: total evaluations
+  const total = reportData.tabs?.strategy?.stats?.total || 0;
+  const sb = document.getElementById('badge-strategy');
+  if (total > 0) { sb.textContent = total; sb.style.display = 'inline'; }
+  else sb.style.display = 'none';
+
+  // Pipeline badge: active + queued count
+  const plStats = reportData.tabs?.pipeline_tab?.stats || {};
+  const plActive = (plStats.active || 0) + (plStats.queued || 0);
+  const pb = document.getElementById('badge-pipeline');
+  if (plActive > 0) { pb.textContent = plActive; pb.style.display = 'inline'; pb.className = 'tab-badge accent'; }
+  else pb.style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Utilities
+// ═══════════════════════════════════════════════════════════════════════
+function toggleSection(header) { header.parentElement.classList.toggle('collapsed'); }
+function toggleItem(item) { item.classList.toggle('expanded'); }
+function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+// ── Agent Avatars & Efficiency Charts ──
+const AGENT_META = {
+  data:       { name: 'Data',       role: 'Coordinator',         color: '#6366F1' },
+  redshirt:   { name: 'Red Shirt',  role: 'General Worker',      color: '#DC2626' },
+  starscream: { name: 'Starscream', role: 'Social Media',        color: '#EC4899' },
+  ravage:     { name: 'Ravage',     role: 'Coding',              color: '#10B981' },
+  soundwave:  { name: 'Soundwave',  role: 'Research & Analysis', color: '#3B82F6' },
+  astrotrain: { name: 'Astrotrain', role: 'DSP/SCM Simulation',  color: '#F59E0B' },
+};
+
+function makeAvatar(aid) {
+  return `<img src="media/avatars/${aid}.webp" alt="${AGENT_META[aid]?.name || aid}" loading="lazy">`;
+}
+
+function makeEffDonut(completed, failed) {
+  const total = completed + failed;
+  if (total === 0) {
+    return `<div class="agent-efficiency"><svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="22" fill="none" stroke="#E5E7EB" stroke-width="4"/></svg><span class="eff-pct" style="color:var(--text-secondary)">--</span></div>`;
+  }
+  const pct = Math.round((completed / total) * 100);
+  const r = 22, c = 2 * Math.PI * r;
+  const arc = (pct / 100) * c;
+  const clr = pct >= 90 ? '#10B981' : pct >= 70 ? '#F59E0B' : '#EF4444';
+  return `<div class="agent-efficiency"><svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="${r}" fill="none" stroke="#E5E7EB" stroke-width="4"/><circle cx="28" cy="28" r="${r}" fill="none" stroke="${clr}" stroke-width="4" stroke-dasharray="${arc.toFixed(1)} ${c.toFixed(1)}" stroke-linecap="round" transform="rotate(-90 28 28)"/></svg><span class="eff-pct">${pct}%</span></div>`;
+}
+
+function formatDuration(seconds) {
+  if (!seconds || seconds < 0) return '--';
+  if (seconds < 60) return seconds + 's';
+  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h < 24) return h + 'h ' + m + 'm';
+  return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
+}
+
+function timeAgo(epochSeconds) {
+  const diff = Math.floor(Date.now() / 1000) - epochSeconds;
+  if (diff < 60) return diff + 's ago';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  return Math.floor(diff / 86400) + 'd ago';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════════════════════
 loadData();
-
-// Auto-refresh every 30 seconds for live-ish tracking
 setInterval(loadData, REFRESH_INTERVAL);
-
-// Update freshness label every 10 seconds (even between fetches)
 setInterval(() => {
   if (!reportData) return;
-  const reportAge = (Date.now() - new Date(reportData.timestamp).getTime()) / 1000;
-  if (reportAge < 120) {
-    updateLiveStatus('ok', `live -- ${Math.round(reportAge)}s ago`);
-  } else if (reportAge < 600) {
-    updateLiveStatus('ok', `${Math.round(reportAge / 60)}m ago`);
-  } else {
-    updateLiveStatus('stale', `${Math.round(reportAge / 60)}m stale`);
-  }
+  const age = (Date.now() - new Date(reportData.timestamp).getTime()) / 1000;
+  if (age < 120) updateLiveStatus('ok', `live -- ${Math.round(age)}s ago`);
+  else if (age < 600) updateLiveStatus('ok', `${Math.round(age / 60)}m ago`);
+  else updateLiveStatus('stale', `${Math.round(age / 60)}m stale`);
 }, 10000);
 </script>
 </body>

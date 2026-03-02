@@ -1,8 +1,11 @@
-import type { WorkerType } from './db.js';
+import type { ModelTier, WorkerType } from './db.js';
 
 export interface Classification {
   isLong: boolean;
   workerType: WorkerType;
+  modelTier: ModelTier;
+  /** When set, multiple workers should handle this task (Phase D). */
+  multiWorker?: WorkerType[];
 }
 
 /**
@@ -124,17 +127,68 @@ const LONG_INDICATORS: RegExp[] = [
 ];
 
 /**
- * Count how many different worker routes a message matches.
- * Multi-topic messages (matching 2+ workers) should stay inline
- * because dispatching to one worker loses context for the others.
+ * Opus-tier indicators: tasks requiring the most capable model.
+ * Architecture decisions, security audits, complex multi-step reasoning.
  */
-function countWorkerMatches(text: string): number {
-  let matches = 0;
+const OPUS_INDICATORS: RegExp[] = [
+  /\b(architect|architecture|system\s+design)\b/i,
+  /\b(security|vulnerability|audit|penetration)\b/i,
+  /\b(comprehensive|thorough|deep)\s+(review|audit|analysis|refactor)\b/i,
+  /\b(redesign|overhaul|rewrite)\b/i,
+  /\b(strategic|strategy)\s+(plan|review|analysis)\b/i,
+  /\buse\s+opus\b/i, // Explicit model request
+];
+
+/**
+ * Haiku-tier indicators: simple tasks that don't need full sonnet.
+ * Formatting, simple lookups, boilerplate generation.
+ */
+const HAIKU_INDICATORS: RegExp[] = [
+  /\b(format|reformat|prettify|lint)\b/i,
+  /\b(rename|move|copy)\s+(the\s+)?(file|variable|function|class)\b/i,
+  /\b(list|show|get)\s+(all\s+)?(files|imports|exports|dependencies)\b/i,
+  /\bboilerplate\b/i,
+  /\buse\s+haiku\b/i, // Explicit model request
+];
+
+/**
+ * Determine the model tier for a task based on complexity indicators.
+ * Opus for architecture/security/complex work, haiku for simple tasks,
+ * sonnet for everything else.
+ */
+function determineModelTier(text: string): ModelTier {
+  // Explicit model requests take priority
+  if (/\buse\s+opus\b/i.test(text)) return 'opus';
+  if (/\buse\s+haiku\b/i.test(text)) return 'haiku';
+
+  // Check opus indicators first (complex tasks)
+  if (OPUS_INDICATORS.some((p) => p.test(text))) return 'opus';
+
+  // Check haiku indicators (simple tasks)
+  if (HAIKU_INDICATORS.some((p) => p.test(text))) return 'haiku';
+
+  // Default: sonnet
+  return 'sonnet';
+}
+
+/**
+ * Get all worker types that match a message.
+ * Used for multi-topic detection and multi-agent composition.
+ */
+function getMatchedWorkers(text: string): WorkerType[] {
+  const matched: WorkerType[] = [];
   for (const route of WORKER_ROUTES) {
     const hit = route.patterns.some((p) => p.test(text));
-    if (hit) matches++;
+    if (hit) matched.push(route.worker);
   }
-  return matches;
+  return matched;
+}
+
+/**
+ * Count how many different worker routes a message matches.
+ */
+function countWorkerMatches(text: string): number {
+  return getMatchedWorkers(text).length;
 }
 
 /**
@@ -156,17 +210,52 @@ export function classifyMessage(text: string): Classification {
   // Strip @prefix for classification (routing already handled by router.ts)
   const stripped = trimmed.replace(/^@\w+\s+/, '');
 
-  // 1. Check quick patterns first
+  // Strip backtick-wrapped text before classification.
+  // Backticks denote references to agents/concepts, not commands to them.
+  // e.g. "Rename the `Starscream` card" won't route to Starscream.
+  const cleaned = stripped.replace(/`[^`]+`/g, '');
+
+  // 1. Check quick patterns first (use stripped, not cleaned -- quick
+  //    patterns match message structure like /commands and greetings)
   for (const pattern of QUICK_PATTERNS) {
     if (pattern.test(stripped)) {
-      return { isLong: false, workerType: 'default' };
+      return { isLong: false, workerType: 'default', modelTier: 'sonnet' };
     }
   }
 
-  // 2. Multi-topic guard: if the message touches 2+ worker domains,
-  // it's a discussion, not a single task. Keep inline so Data handles all of it.
-  if (countWorkerMatches(stripped) >= 2) {
-    return { isLong: false, workerType: 'default' };
+  // 2. Multi-topic detection: if the message touches 2+ worker domains
+  // AND has long task indicators, dispatch to all matched workers (Phase D).
+  // If it doesn't have long indicators, keep inline (it's a discussion).
+  // Use `cleaned` so backtick-wrapped agent names don't trigger routing.
+  const matchedWorkers = getMatchedWorkers(cleaned);
+  if (matchedWorkers.length >= 2) {
+    const hasLongIndicators = LONG_INDICATORS.some((p) => p.test(cleaned));
+    if (hasLongIndicators) {
+      // Guard: conversational messages (150+ chars, 3+ sentences) that are
+      // questions or meta-discussions should stay inline even if multi-topic.
+      // Lower threshold than step 3 (200) because multi-topic matches are more
+      // prone to false positives from discussions mentioning multiple domains.
+      const sentCount = (stripped.match(/[.!?]\s/g) || []).length + 1;
+      if (stripped.length > 150 && sentCount >= 3) {
+        const isQuestion = /\?\s*$/.test(stripped);
+        const startsWithQ = /^(who|what|where|when|why|how|is|are|do|does|did|can|could|will|would|should)\b/i.test(stripped);
+        const isMeta = /\b(supposed to|intention|do not make changes|don't make changes|this is a discussion|still experiencing|still dealing|still getting|was the plan|want to know)\b/i.test(stripped);
+
+        if (isQuestion || startsWithQ || isMeta) {
+          return { isLong: false, workerType: 'default', modelTier: 'sonnet' };
+        }
+      }
+
+      const modelTier = determineModelTier(cleaned);
+      return {
+        isLong: true,
+        workerType: matchedWorkers[0], // Primary worker (first match)
+        modelTier,
+        multiWorker: matchedWorkers,
+      };
+    }
+    // No long indicators with multi-topic = discussion, keep inline
+    return { isLong: false, workerType: 'default', modelTier: 'sonnet' };
   }
 
   // 3. Long conversational messages guard: messages over 200 chars with 3+
@@ -176,9 +265,10 @@ export function classifyMessage(text: string): Classification {
   if (stripped.length > 200 && sentenceCount >= 3) {
     // Exception: if the message explicitly names a worker AND is imperative
     // (not a question or meta-discussion about the worker), dispatch anyway.
-    const explicitWorker = /\b(starscream|ravage|soundwave|astrotrain)\b/i.test(stripped);
+    // Use `cleaned` so backtick-wrapped names don't count as explicit.
+    const explicitWorker = /\b(starscream|ravage|soundwave|astrotrain)\b/i.test(cleaned);
     if (!explicitWorker) {
-      return { isLong: false, workerType: 'default' };
+      return { isLong: false, workerType: 'default', modelTier: 'sonnet' };
     }
 
     // Even with explicit worker name, keep inline if it's a discussion:
@@ -190,27 +280,30 @@ export function classifyMessage(text: string): Classification {
     const isMetaDiscussion = /\b(supposed to|intention|do not make changes|don't make changes|this is a discussion|still experiencing|still dealing|still getting|was the plan|want to know)\b/i.test(stripped);
 
     if (isQuestion || startsWithQuestionWord || isMetaDiscussion) {
-      return { isLong: false, workerType: 'default' };
+      return { isLong: false, workerType: 'default', modelTier: 'sonnet' };
     }
   }
 
-  // 4. Check if this looks like a long task
-  const isLong = LONG_INDICATORS.some((p) => p.test(stripped));
+  // 4. Check if this looks like a long task (use cleaned)
+  const isLong = LONG_INDICATORS.some((p) => p.test(cleaned));
 
   if (!isLong) {
     // Short message with no long indicators: handle inline
-    return { isLong: false, workerType: 'default' };
+    return { isLong: false, workerType: 'default', modelTier: 'sonnet' };
   }
 
-  // 5. Route to the appropriate worker
+  // Determine model tier based on task complexity
+  const modelTier = determineModelTier(cleaned);
+
+  // 5. Route to the appropriate worker (use cleaned)
   for (const route of WORKER_ROUTES) {
     for (const pattern of route.patterns) {
-      if (pattern.test(stripped)) {
-        return { isLong: true, workerType: route.worker };
+      if (pattern.test(cleaned)) {
+        return { isLong: true, workerType: route.worker, modelTier };
       }
     }
   }
 
   // Long task but no specific worker match: use default
-  return { isLong: true, workerType: 'default' };
+  return { isLong: true, workerType: 'default', modelTier };
 }

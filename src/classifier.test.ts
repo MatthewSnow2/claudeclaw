@@ -5,47 +5,56 @@ describe('classifyMessage', () => {
   // ── Quick patterns ──────────────────────────────────────────────
 
   it('classifies bot commands as quick', () => {
-    expect(classifyMessage('/start')).toEqual({ isLong: false, workerType: 'default' });
-    expect(classifyMessage('/help')).toEqual({ isLong: false, workerType: 'default' });
-    expect(classifyMessage('convolife')).toEqual({ isLong: false, workerType: 'default' });
+    expect(classifyMessage('/start')).toEqual({ isLong: false, workerType: 'default', modelTier: 'sonnet' });
+    expect(classifyMessage('/help')).toEqual({ isLong: false, workerType: 'default', modelTier: 'sonnet' });
+    expect(classifyMessage('convolife')).toEqual({ isLong: false, workerType: 'default', modelTier: 'sonnet' });
   });
 
   it('classifies greetings as quick', () => {
-    expect(classifyMessage('hello')).toEqual({ isLong: false, workerType: 'default' });
-    expect(classifyMessage('thanks!')).toEqual({ isLong: false, workerType: 'default' });
+    expect(classifyMessage('hello')).toEqual({ isLong: false, workerType: 'default', modelTier: 'sonnet' });
+    expect(classifyMessage('thanks!')).toEqual({ isLong: false, workerType: 'default', modelTier: 'sonnet' });
   });
 
   it('classifies short questions as quick', () => {
-    expect(classifyMessage('what time is it?')).toEqual({ isLong: false, workerType: 'default' });
-    expect(classifyMessage('who built this?')).toEqual({ isLong: false, workerType: 'default' });
+    expect(classifyMessage('what time is it?')).toEqual({ isLong: false, workerType: 'default', modelTier: 'sonnet' });
+    expect(classifyMessage('who built this?')).toEqual({ isLong: false, workerType: 'default', modelTier: 'sonnet' });
   });
 
   // ── Worker routing ──────────────────────────────────────────────
 
   it('routes LinkedIn posts to starscream', () => {
     const result = classifyMessage('write a LinkedIn post about AI agents');
-    expect(result).toEqual({ isLong: true, workerType: 'starscream' });
+    expect(result).toEqual({ isLong: true, workerType: 'starscream', modelTier: 'sonnet' });
   });
 
   it('routes coding tasks to ravage', () => {
     const result = classifyMessage('build the new auth module');
-    expect(result).toEqual({ isLong: true, workerType: 'ravage' });
+    expect(result).toEqual({ isLong: true, workerType: 'ravage', modelTier: 'sonnet' });
   });
 
   it('routes research tasks to soundwave', () => {
     const result = classifyMessage('research the competitor landscape');
-    expect(result).toEqual({ isLong: true, workerType: 'soundwave' });
+    expect(result).toEqual({ isLong: true, workerType: 'soundwave', modelTier: 'sonnet' });
   });
 
   it('routes deploy tasks to ravage', () => {
     const result = classifyMessage('deploy the service to production');
-    expect(result).toEqual({ isLong: true, workerType: 'ravage' });
+    expect(result).toEqual({ isLong: true, workerType: 'ravage', modelTier: 'sonnet' });
   });
 
-  // ── Multi-topic guard ──────────────────────────────────────────
+  // ── Multi-agent composition (Phase D) ──────────────────────────
 
-  it('keeps multi-topic messages inline', () => {
+  it('dispatches multi-topic messages to multiple workers', () => {
+    // "build" matches ravage, "LinkedIn post" matches starscream, "research" matches soundwave
     const result = classifyMessage('build a LinkedIn post and research competitors');
+    expect(result.isLong).toBe(true);
+    expect(result.multiWorker).toEqual(['starscream', 'ravage', 'soundwave']);
+    expect(result.workerType).toBe('starscream'); // Primary = first match
+  });
+
+  it('keeps multi-topic discussions without long indicators inline', () => {
+    // No action verbs, just mentions two domains
+    const result = classifyMessage('LinkedIn and competitor data look fine');
     expect(result.isLong).toBe(false);
   });
 
@@ -105,6 +114,35 @@ describe('classifyMessage', () => {
     expect(result.workerType).toBe('starscream');
   });
 
+  // ── Backtick escape (agent name references) ────────────────────
+
+  it('does not route to an agent when its name is in backticks', () => {
+    // "Rename the `Starscream` card" -- talking ABOUT Starscream, not commanding it
+    const result = classifyMessage('Rename the `Starscream` card on the dashboard');
+    expect(result.workerType).not.toBe('starscream');
+  });
+
+  it('does not route when multiple agent names are in backticks', () => {
+    const result = classifyMessage('Build a comparison between `Ravage` and `Soundwave` efficiency');
+    // "build" triggers long indicator + ravage route, but since both names
+    // are in backticks, only the bare "build" should route (to ravage via action verb)
+    expect(result.workerType).toBe('ravage');
+    expect(result.multiWorker).toBeUndefined(); // No multi-topic since names stripped
+  });
+
+  it('still routes when agent name is NOT in backticks', () => {
+    const result = classifyMessage('Starscream, write a post about AI');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('starscream');
+  });
+
+  it('routes correctly when only some names are escaped', () => {
+    // Commanding Ravage but referencing Starscream
+    const result = classifyMessage('Build a new card for `Starscream` on the dashboard');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('ravage'); // "build" routes to ravage
+  });
+
   // ── Edge cases ─────────────────────────────────────────────────
 
   it('handles empty string', () => {
@@ -119,11 +157,61 @@ describe('classifyMessage', () => {
 
   it('short imperative commands dispatch normally', () => {
     const result = classifyMessage('fix the auth bug');
-    expect(result).toEqual({ isLong: true, workerType: 'ravage' });
+    expect(result).toEqual({ isLong: true, workerType: 'ravage', modelTier: 'sonnet' });
   });
 
   it('messages with no long indicators stay inline', () => {
     const result = classifyMessage('I like pizza');
-    expect(result).toEqual({ isLong: false, workerType: 'default' });
+    expect(result).toEqual({ isLong: false, workerType: 'default', modelTier: 'sonnet' });
+  });
+
+  // ── Model Tiering ─────────────────────────────────────────────
+
+  it('assigns opus tier for architecture tasks', () => {
+    const result = classifyMessage('architect the new microservices platform');
+    expect(result.isLong).toBe(true);
+    expect(result.modelTier).toBe('opus');
+  });
+
+  it('assigns opus tier for security audits', () => {
+    const result = classifyMessage('audit the security of our API endpoints');
+    expect(result.isLong).toBe(true);
+    expect(result.modelTier).toBe('opus');
+  });
+
+  it('assigns opus tier for comprehensive reviews', () => {
+    const result = classifyMessage('comprehensive review of the codebase');
+    expect(result.isLong).toBe(true);
+    expect(result.modelTier).toBe('opus');
+  });
+
+  it('assigns haiku tier for formatting tasks that hit long indicators', () => {
+    // "refactor" hits LONG_INDICATORS, "format" hits HAIKU_INDICATORS
+    const result = classifyMessage('refactor and reformat the config module');
+    expect(result.isLong).toBe(true);
+    expect(result.modelTier).toBe('haiku');
+  });
+
+  it('assigns haiku tier when explicitly requested', () => {
+    const result = classifyMessage('fix the typo in auth module, use haiku');
+    expect(result.isLong).toBe(true);
+    expect(result.modelTier).toBe('haiku');
+  });
+
+  it('respects explicit "use opus" override', () => {
+    const result = classifyMessage('build the login page, use opus');
+    expect(result.isLong).toBe(true);
+    expect(result.modelTier).toBe('opus');
+  });
+
+  it('respects explicit "use haiku" override', () => {
+    const result = classifyMessage('fix the typo in the readme, use haiku');
+    expect(result.isLong).toBe(true);
+    expect(result.modelTier).toBe('haiku');
+  });
+
+  it('defaults to sonnet for standard tasks', () => {
+    const result = classifyMessage('build the new auth module');
+    expect(result.modelTier).toBe('sonnet');
   });
 });
