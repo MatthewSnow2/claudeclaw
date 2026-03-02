@@ -133,6 +133,45 @@ def init_db(db: sqlite3.Connection):
 
         CREATE INDEX IF NOT EXISTS idx_post_metrics_published
             ON post_metrics(published_at);
+
+        CREATE TABLE IF NOT EXISTS best_time_analysis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            collected_at TEXT NOT NULL,
+            platform TEXT DEFAULT 'linkedin',
+            day_of_week TEXT NOT NULL,
+            hour INTEGER NOT NULL,
+            score REAL DEFAULT 0.0,
+            impressions INTEGER DEFAULT 0,
+            engagement_rate REAL DEFAULT 0.0,
+            post_count INTEGER DEFAULT 0,
+            raw_json TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS content_decay (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id TEXT NOT NULL,
+            collected_at TEXT NOT NULL,
+            platform TEXT DEFAULT 'linkedin',
+            hours_since_publish INTEGER NOT NULL,
+            cumulative_impressions INTEGER DEFAULT 0,
+            cumulative_engagement INTEGER DEFAULT 0,
+            raw_json TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS posting_frequency (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            collected_at TEXT NOT NULL,
+            platform TEXT DEFAULT 'linkedin',
+            current_posts_per_week REAL DEFAULT 0.0,
+            optimal_posts_per_week REAL DEFAULT 0.0,
+            correlation REAL DEFAULT 0.0,
+            raw_json TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_best_time_day
+            ON best_time_analysis(day_of_week, hour);
+        CREATE INDEX IF NOT EXISTS idx_content_decay_post
+            ON content_decay(post_id, hours_since_publish);
     """)
 
 
@@ -242,6 +281,135 @@ def collect_aggregate(db: sqlite3.Connection, api_key: str) -> dict | None:
     }
 
 
+def collect_best_time(db: sqlite3.Connection, api_key: str) -> list[dict] | None:
+    """Fetch best-time-to-post analysis from Late API and store."""
+    data = late_api_get(
+        f"/analytics/get-best-time-to-post?accountId={LINKEDIN_ACCOUNT_ID}", api_key
+    )
+    if not data:
+        return None
+
+    now = datetime.now().isoformat()
+    # Handle different response shapes
+    times = (
+        data if isinstance(data, list)
+        else data.get("bestTimes", data.get("data", data.get("times", [])))
+    )
+
+    if not isinstance(times, list):
+        print(f"  best-time: unexpected response shape, got {type(times)}", file=sys.stderr)
+        return None
+
+    stored = []
+    for entry in times:
+        day = entry.get("day", entry.get("dayOfWeek", ""))
+        hour = entry.get("hour", entry.get("hourOfDay", 0)) or 0
+        score = entry.get("score", entry.get("weight", 0.0)) or 0.0
+        impressions = entry.get("impressions", entry.get("avgImpressions", 0)) or 0
+        eng_rate = entry.get("engagement_rate", entry.get("engagementRate", 0.0)) or 0.0
+        post_count = entry.get("post_count", entry.get("postCount", 0)) or 0
+
+        if not day:
+            continue
+
+        db.execute(
+            """INSERT INTO best_time_analysis
+               (collected_at, day_of_week, hour, score, impressions,
+                engagement_rate, post_count, raw_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (now, day, hour, round(score, 4), impressions,
+             round(eng_rate, 2), post_count, json.dumps(entry)),
+        )
+        stored.append({"day": day, "hour": hour, "score": round(score, 4)})
+
+    db.commit()
+    return stored
+
+
+def collect_content_decay(db: sqlite3.Connection, api_key: str) -> list[dict] | None:
+    """Fetch content decay curves from Late API and store."""
+    data = late_api_get(
+        f"/analytics/get-content-decay?accountId={LINKEDIN_ACCOUNT_ID}", api_key
+    )
+    if not data:
+        return None
+
+    now = datetime.now().isoformat()
+    # Handle different response shapes
+    posts = (
+        data if isinstance(data, list)
+        else data.get("posts", data.get("data", []))
+    )
+
+    if not isinstance(posts, list):
+        print(f"  content-decay: unexpected response shape, got {type(posts)}", file=sys.stderr)
+        return None
+
+    stored = []
+    for post in posts:
+        post_id = post.get("postId", post.get("id", ""))
+        if not post_id:
+            continue
+
+        decay_points = post.get("decay", post.get("curve", post.get("data", [])))
+        if not isinstance(decay_points, list):
+            continue
+
+        for point in decay_points:
+            hours = point.get("hours", point.get("hoursSincePublish", 0)) or 0
+            impressions = point.get("impressions", point.get("cumulativeImpressions", 0)) or 0
+            engagement = point.get("engagement", point.get("cumulativeEngagement", 0)) or 0
+
+            db.execute(
+                """INSERT INTO content_decay
+                   (post_id, collected_at, hours_since_publish,
+                    cumulative_impressions, cumulative_engagement, raw_json)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (post_id, now, hours, impressions, engagement, json.dumps(point)),
+            )
+
+        stored.append({"post_id": post_id, "points": len(decay_points)})
+
+    db.commit()
+    return stored
+
+
+def collect_posting_frequency(db: sqlite3.Connection, api_key: str) -> dict | None:
+    """Fetch posting frequency analysis from Late API and store."""
+    data = late_api_get(
+        f"/analytics/get-posting-frequency?accountId={LINKEDIN_ACCOUNT_ID}", api_key
+    )
+    if not data:
+        return None
+
+    now = datetime.now().isoformat()
+    # Handle nested or flat response
+    freq = data.get("frequency", data) if isinstance(data, dict) else {}
+
+    if not isinstance(freq, dict):
+        print(f"  posting-frequency: unexpected response shape, got {type(freq)}", file=sys.stderr)
+        return None
+
+    current = freq.get("current_posts_per_week", freq.get("currentPostsPerWeek", 0.0)) or 0.0
+    optimal = freq.get("optimal_posts_per_week", freq.get("optimalPostsPerWeek", 0.0)) or 0.0
+    correlation = freq.get("correlation", freq.get("engagementCorrelation", 0.0)) or 0.0
+
+    db.execute(
+        """INSERT INTO posting_frequency
+           (collected_at, current_posts_per_week, optimal_posts_per_week,
+            correlation, raw_json)
+           VALUES (?, ?, ?, ?, ?)""",
+        (now, round(current, 2), round(optimal, 2),
+         round(correlation, 4), json.dumps(data)),
+    )
+    db.commit()
+    return {
+        "current": round(current, 2),
+        "optimal": round(optimal, 2),
+        "correlation": round(correlation, 4),
+    }
+
+
 def build_summary(db: sqlite3.Connection) -> str:
     """Build a Telegram-friendly analytics summary."""
     now = datetime.now()
@@ -292,6 +460,19 @@ def build_summary(db: sqlite3.Connection) -> str:
         direction = "+" if delta >= 0 else ""
         lines.append(f"\n<b>Follower Trend</b>: {direction}{delta} over last {len(follower_history)} snapshots")
 
+    # Best posting times (top 3 slots from latest collection)
+    best_times = db.execute(
+        """SELECT day_of_week, hour, score, engagement_rate
+           FROM best_time_analysis
+           WHERE collected_at = (SELECT MAX(collected_at) FROM best_time_analysis)
+           ORDER BY score DESC
+           LIMIT 3"""
+    ).fetchall()
+
+    if best_times:
+        slots = ", ".join(f"{t[0]} {t[1]}:00 ({t[3]:.1f}%)" for t in best_times)
+        lines.append(f"\n<b>Best Post Times</b>: {slots}")
+
     return "\n".join(lines)
 
 
@@ -316,7 +497,7 @@ def main():
 
     print(f"[{datetime.now().isoformat()}] Collecting Starscream analytics...")
 
-    # Collect all data
+    # Collect core data
     posts = collect_post_analytics(db, api_key)
     followers = collect_follower_analytics(db, api_key)
     aggregate = collect_aggregate(db, api_key)
@@ -324,6 +505,15 @@ def main():
     print(f"  Posts collected: {len(posts)}")
     print(f"  Followers: {followers}")
     print(f"  Aggregate: {aggregate}")
+
+    # Collect extended analytics (defensive -- failures here don't break the run)
+    best_times = collect_best_time(db, api_key)
+    decay = collect_content_decay(db, api_key)
+    frequency = collect_posting_frequency(db, api_key)
+
+    print(f"  Best times: {best_times}")
+    print(f"  Content decay: {decay}")
+    print(f"  Posting frequency: {frequency}")
 
     if dry_run:
         print("\n=== DRY RUN - Summary ===")
