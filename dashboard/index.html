@@ -342,7 +342,45 @@
     .two-col { grid-template-columns: 1fr; }
     .tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .tab-btn { flex-shrink: 0; padding: 8px 14px; font-size: 12px; }
+    .heatmap-grid { overflow-x: auto; min-width: 600px; }
+    .heatmap-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   }
+
+  /* Social Performance */
+  .social-section-title { font-size: 16px; font-weight: 700; color: var(--accent); margin: 24px 0 16px; padding-top: 20px; border-top: 2px solid var(--border); }
+  .heatmap-wrap { border-radius: 8px; }
+  .heatmap-grid { display: grid; grid-template-columns: 60px repeat(24, 1fr); gap: 2px; font-size: 10px; }
+  .heatmap-cell { aspect-ratio: 1; border-radius: 3px; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; }
+  .heatmap-cell:hover { outline: 2px solid var(--accent); z-index: 1; }
+  .heatmap-label { font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; }
+  .heatmap-tooltip {
+    display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: var(--text); color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px;
+    white-space: nowrap; z-index: 10; pointer-events: none;
+  }
+  .heatmap-cell:hover .heatmap-tooltip { display: block; }
+  .top-posts-table { width: 100%; border-collapse: collapse; }
+  .top-posts-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .top-posts-table td { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #F3F4F6; }
+  .top-posts-table tr:last-child td { border-bottom: none; }
+  .top-posts-table .content-cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .engagement-bar { height: 4px; border-radius: 2px; background: var(--ok); display: inline-block; margin-left: 6px; vertical-align: middle; }
+  .tab-switch { display: flex; gap: 0; margin-bottom: 12px; }
+  .tab-switch button { background: none; border: 1px solid var(--border); padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--text); }
+  .tab-switch button:first-child { border-radius: 6px 0 0 6px; }
+  .tab-switch button:last-child { border-radius: 0 6px 6px 0; }
+  .tab-switch button.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .insight-card {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-bottom: 1px solid #F3F4F6;
+  }
+  .insight-card:last-child { border-bottom: none; }
+  .insight-badge {
+    font-size: 10px; font-weight: 600; text-transform: uppercase; padding: 2px 8px;
+    border-radius: 4px; background: var(--info-bg); color: var(--info); white-space: nowrap;
+  }
+  .insight-metric { font-size: 14px; font-weight: 600; font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+  .insight-name { font-size: 13px; font-weight: 500; }
 </style>
 </head>
 <body>
@@ -445,7 +483,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-content active" id="tab-operations">
   <div class="summary-bar" id="summary-bar">
-    <div class="stat-card ok"><div class="number" id="stat-completed">--</div><div class="label">Completed This Week</div></div>
+    <div class="stat-card ok"><div class="number" id="stat-completed">--</div><div class="label">Commits This Week</div></div>
     <div class="stat-card warning"><div class="number" id="stat-open">--</div><div class="label">Open Items</div></div>
     <div class="stat-card error"><div class="number" id="stat-blockers">--</div><div class="label">Needs Attention</div></div>
     <div class="stat-card accent"><div class="number" id="stat-services">--</div><div class="label">Services Online</div></div>
@@ -523,6 +561,75 @@
     </div>
     <div class="section-body" id="evaluations-list"></div>
   </div>
+
+  <!-- Social Performance Section -->
+  <div id="social-perf-section" style="display:none;">
+    <h2 class="social-section-title">Social Performance</h2>
+    <div class="summary-bar" id="social-kpi"></div>
+
+    <div class="chart-container">
+      <h2>Daily Trend (30d)</h2>
+      <div class="chart-wrapper"><canvas id="social-trend-chart"></canvas></div>
+    </div>
+
+    <!-- Top Posts with Tab Switcher -->
+    <div class="section-card">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h3>Top Posts</h3>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="count" id="top-posts-count">0</span>
+          <span class="chevron">&#9662;</span>
+        </div>
+      </div>
+      <div class="section-body" style="padding:12px 16px;">
+        <div class="tab-switch" id="top-posts-tabs">
+          <button class="active" onclick="switchTopPosts('7d', this)">7 days</button>
+          <button onclick="switchTopPosts('30d', this)">30 days</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="top-posts-table" id="top-posts-table">
+            <thead><tr><th>Content</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Impressions</th><th>Engagement</th></tr></thead>
+            <tbody id="top-posts-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Best Posting Time Heatmap -->
+    <div class="section-card">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h3>Best Posting Times</h3>
+        <span class="chevron">&#9662;</span>
+      </div>
+      <div class="section-body" style="padding:12px 16px;">
+        <div class="heatmap-wrap">
+          <div class="heatmap-grid" id="posting-heatmap"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two-col: Follower chart + Decay curves -->
+    <div class="two-col">
+      <div class="chart-container" style="margin-bottom:0;">
+        <h2>Follower Growth</h2>
+        <div class="chart-wrapper"><canvas id="follower-chart"></canvas></div>
+      </div>
+      <div class="chart-container" style="margin-bottom:0;">
+        <h2>Content Decay Curves</h2>
+        <div class="chart-wrapper"><canvas id="decay-chart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Content Insights -->
+    <div class="section-card">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h3>Content Insights</h3>
+        <span class="chevron">&#9662;</span>
+      </div>
+      <div class="section-body" id="content-insights"></div>
+    </div>
+  </div>
+
   <div class="section-card">
     <div class="section-header" onclick="toggleSection(this)">
       <h3>IdeaForge Pipeline</h3>
@@ -866,6 +973,11 @@ function renderTab2() {
 }
 
 let chart = null;
+let socialTrendChart = null;
+let followerChart = null;
+let decayChart = null;
+let currentTopPostsView = '7d';
+
 function renderChart() {
   if (!timelineData?.weekly) return;
   const ctx = document.getElementById('timeline-chart').getContext('2d');
@@ -874,7 +986,7 @@ function renderChart() {
   const data = timelineData.weekly.map(d => d.completed);
   const colors = data.map((v, i) => i === data.length - 1 ? '#E8735A' : '#6366F1');
   chart = new Chart(ctx, {
-    type: 'bar', data: { labels, datasets: [{ label: 'Items Completed', data, backgroundColor: colors, borderRadius: 6, borderSkipped: false, barThickness: 40 }] },
+    type: 'bar', data: { labels, datasets: [{ label: 'Commits', data, backgroundColor: colors, borderRadius: 6, borderSkipped: false, barThickness: 40 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
       scales: { y: { beginAtZero: true, ticks: { stepSize: 2, font: { family: 'JetBrains Mono', size: 11 } }, grid: { color: '#F3F4F6' } },
                x: { ticks: { font: { family: 'Inter', size: 12 } }, grid: { display: false } } } }
@@ -980,11 +1092,18 @@ function renderTab3() {
 
   // Memory stats
   const ms = hll.memory_stats || {};
+  const sl = hll.sky_lynx_hil || {};
+  const slClass = sl.total_recs === 0 ? '' : sl.has_pending ? 'warning' : 'ok';
+  const slNum = sl.total_recs === 0 ? '--' : sl.pending_count;
+  const slSub = sl.total_recs > 0
+    ? `${sl.auto_applied_count} auto / ${sl.total_recs} total`
+    : 'No analysis yet';
   document.getElementById('memory-stats').innerHTML = `
     <div class="stat-card info"><div class="number">${ms.total_memories || 0}</div><div class="label">Total Memories</div><div class="sub">${ms.semantic_today || 0} + ${ms.episodic_today || 0} today</div></div>
     <div class="stat-card"><div class="number">${ms.semantic_count || 0}</div><div class="label">Semantic</div></div>
     <div class="stat-card"><div class="number">${ms.episodic_count || 0}</div><div class="label">Episodic</div></div>
     <div class="stat-card"><div class="number">${ms.vector_count || 0}</div><div class="label">Vectors</div></div>
+    <div class="stat-card ${slClass}"><div class="number">${slNum}</div><div class="label">Sky-Lynx HIL</div><div class="sub">${slSub}</div></div>
   `;
 
   // Extraction
@@ -1114,6 +1233,346 @@ function renderTab4() {
       </div>
     </div>
   `).join('') : '<div class="empty-state">No ideas in the IdeaForge pipeline</div>';
+
+  // Social Performance
+  renderSocialPerformance();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Social Performance (within Tab 4)
+// ═══════════════════════════════════════════════════════════════════════
+function renderSocialPerformance() {
+  const social = reportData.tabs?.strategy?.social_analytics;
+  const section = document.getElementById('social-perf-section');
+  if (!social || !social.kpi) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+
+  // 1. KPI Cards
+  const kpi = social.kpi;
+  const followerChange = kpi.follower_change_7d || 0;
+  const changeBadge = followerChange >= 0
+    ? `<span style="color:var(--ok);font-size:11px;font-weight:600"> +${followerChange}</span>`
+    : `<span style="color:var(--error);font-size:11px;font-weight:600"> ${followerChange}</span>`;
+
+  document.getElementById('social-kpi').innerHTML = `
+    <div class="stat-card accent"><div class="number">${(kpi.total_impressions_30d || 0).toLocaleString()}</div><div class="label">Impressions (30d)</div></div>
+    <div class="stat-card ok"><div class="number">${(kpi.avg_engagement_rate_30d || 0).toFixed(1)}%</div><div class="label">Avg Engagement (30d)</div></div>
+    <div class="stat-card info"><div class="number">${(kpi.follower_count || 0).toLocaleString()}${changeBadge}</div><div class="label">Followers</div></div>
+    <div class="stat-card accent"><div class="number">${kpi.post_count_30d || 0}</div><div class="label">Posts (30d)</div></div>
+  `;
+
+  // 2. Daily Trend Chart (dual axis: bars for impressions, line for engagement)
+  renderSocialTrendChart(social.daily_trend || []);
+
+  // 3. Top Posts Table
+  renderTopPosts(social);
+
+  // 4. Best Posting Time Heatmap
+  renderPostingHeatmap(social.best_time_heatmap || []);
+
+  // 5. Follower Growth Chart
+  renderFollowerChart(social.follower_trend || []);
+
+  // 6. Content Decay Curves
+  renderDecayChart(social.content_decay_recent || []);
+
+  // 7. Content Insights
+  renderContentInsights(social.content_insights || []);
+}
+
+function renderSocialTrendChart(dailyTrend) {
+  const ctx = document.getElementById('social-trend-chart').getContext('2d');
+  if (socialTrendChart) socialTrendChart.destroy();
+  if (!dailyTrend.length) return;
+
+  const labels = dailyTrend.map(d => d.date ? d.date.slice(5) : '');
+  const impressions = dailyTrend.map(d => d.impressions || 0);
+  const engagementRate = dailyTrend.map(d => d.engagement_rate || 0);
+
+  socialTrendChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Impressions',
+          data: impressions,
+          backgroundColor: 'rgba(99, 102, 241, 0.5)',
+          borderColor: '#6366F1',
+          borderWidth: 1,
+          borderRadius: 4,
+          borderSkipped: false,
+          yAxisID: 'y',
+          order: 2
+        },
+        {
+          label: 'Engagement %',
+          data: engagementRate,
+          type: 'line',
+          borderColor: '#E8735A',
+          backgroundColor: 'rgba(232, 115, 90, 0.1)',
+          borderWidth: 2,
+          pointRadius: 2,
+          pointBackgroundColor: '#E8735A',
+          fill: true,
+          tension: 0.3,
+          yAxisID: 'y1',
+          order: 1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { font: { family: 'Inter', size: 11 }, boxWidth: 12 } }
+      },
+      scales: {
+        y: {
+          type: 'linear', position: 'left', beginAtZero: true,
+          title: { display: true, text: 'Impressions', font: { family: 'Inter', size: 11 }, color: '#6B7280' },
+          ticks: { font: { family: 'JetBrains Mono', size: 10 } },
+          grid: { color: '#F3F4F6' }
+        },
+        y1: {
+          type: 'linear', position: 'right', beginAtZero: true,
+          title: { display: true, text: 'Engagement %', font: { family: 'Inter', size: 11 }, color: '#6B7280' },
+          ticks: { font: { family: 'JetBrains Mono', size: 10 }, callback: v => v + '%' },
+          grid: { drawOnChartArea: false }
+        },
+        x: {
+          ticks: { font: { family: 'Inter', size: 10 }, maxRotation: 45 },
+          grid: { display: false }
+        }
+      }
+    }
+  });
+}
+
+function renderTopPosts(social) {
+  const posts7d = social.top_posts_7d || [];
+  const posts30d = social.top_posts_30d || [];
+  const posts = currentTopPostsView === '7d' ? posts7d : posts30d;
+  const count = document.getElementById('top-posts-count');
+  count.textContent = posts.length;
+
+  const maxEng = Math.max(...posts.map(p => p.engagement_rate || 0), 1);
+  const tbody = document.getElementById('top-posts-tbody');
+  tbody.innerHTML = posts.slice(0, 5).map(p => {
+    const barWidth = Math.round(((p.engagement_rate || 0) / maxEng) * 60);
+    return `<tr onclick="this.querySelector('.content-cell').style.whiteSpace=this.querySelector('.content-cell').style.whiteSpace==='normal'?'nowrap':'normal'" style="cursor:pointer">
+      <td class="content-cell" title="${(p.content_preview || '').replace(/"/g, '&quot;')}">${p.content_preview || '--'}</td>
+      <td>${p.likes || 0}</td>
+      <td>${p.comments || 0}</td>
+      <td>${p.shares || 0}</td>
+      <td>${(p.impressions || 0).toLocaleString()}</td>
+      <td>${(p.engagement_rate || 0).toFixed(1)}%<span class="engagement-bar" style="width:${barWidth}px"></span></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding:20px">No posts data</td></tr>';
+}
+
+function switchTopPosts(view, btn) {
+  currentTopPostsView = view;
+  document.querySelectorAll('#top-posts-tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const social = reportData.tabs?.strategy?.social_analytics;
+  if (social) renderTopPosts(social);
+}
+
+function renderPostingHeatmap(heatmapData) {
+  const grid = document.getElementById('posting-heatmap');
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const shortDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  // Build lookup: day -> hour -> data
+  const lookup = {};
+  let maxScore = 0;
+  heatmapData.forEach(d => {
+    const key = d.day + '-' + d.hour;
+    lookup[key] = d;
+    if (d.score > maxScore) maxScore = d.score;
+  });
+  if (maxScore === 0) maxScore = 1;
+
+  let html = '';
+  // Header row: empty corner + hour labels
+  html += '<div class="heatmap-label"></div>';
+  for (let h = 0; h < 24; h++) {
+    html += `<div class="heatmap-label" style="justify-content:center;font-family:'JetBrains Mono',monospace">${h}</div>`;
+  }
+
+  // Data rows
+  days.forEach((day, di) => {
+    html += `<div class="heatmap-label">${shortDays[di]}</div>`;
+    for (let h = 0; h < 24; h++) {
+      const d = lookup[day + '-' + h];
+      const score = d ? d.score : 0;
+      const pct = score / maxScore;
+      // Interpolate from bg to accent-light to accent
+      const color = pct === 0
+        ? 'var(--bg)'
+        : pct < 0.5
+          ? `color-mix(in srgb, var(--bg), var(--accent-light) ${Math.round(pct * 200)}%)`
+          : `color-mix(in srgb, var(--accent-light), var(--accent) ${Math.round((pct - 0.5) * 200)}%)`;
+      const tooltip = d
+        ? `${day} ${h}:00 | ${(d.impressions || 0).toLocaleString()} imp | ${(d.engagement_rate || 0).toFixed(1)}% eng`
+        : `${day} ${h}:00 | No data`;
+      html += `<div class="heatmap-cell" style="background:${color}"><div class="heatmap-tooltip">${tooltip}</div></div>`;
+    }
+  });
+
+  grid.innerHTML = html;
+}
+
+function renderFollowerChart(followerTrend) {
+  const ctx = document.getElementById('follower-chart').getContext('2d');
+  if (followerChart) followerChart.destroy();
+  if (!followerTrend.length) return;
+
+  const labels = followerTrend.map(d => {
+    const dt = d.date || '';
+    return dt.includes('T') ? dt.slice(5, 10) : dt.slice(5);
+  });
+  const totals = followerTrend.map(d => d.total || 0);
+  const deltas = followerTrend.map(d => d.new_24h || 0);
+
+  followerChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Followers',
+          data: totals,
+          borderColor: '#6366F1',
+          backgroundColor: 'rgba(99, 102, 241, 0.1)',
+          borderWidth: 2,
+          pointRadius: 2,
+          fill: true,
+          tension: 0.3,
+          yAxisID: 'y'
+        },
+        {
+          label: 'New (24h)',
+          data: deltas,
+          type: 'bar',
+          backgroundColor: 'rgba(16, 185, 129, 0.5)',
+          borderColor: '#10B981',
+          borderWidth: 1,
+          borderRadius: 3,
+          yAxisID: 'y1',
+          order: 2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { font: { family: 'Inter', size: 10 }, boxWidth: 10 } }
+      },
+      scales: {
+        y: {
+          position: 'left', beginAtZero: false,
+          ticks: { font: { family: 'JetBrains Mono', size: 10 } },
+          grid: { color: '#F3F4F6' }
+        },
+        y1: {
+          position: 'right', beginAtZero: true,
+          ticks: { font: { family: 'JetBrains Mono', size: 10 } },
+          grid: { drawOnChartArea: false }
+        },
+        x: {
+          ticks: { font: { family: 'Inter', size: 10 }, maxRotation: 45 },
+          grid: { display: false }
+        }
+      }
+    }
+  });
+}
+
+function renderDecayChart(decayData) {
+  const ctx = document.getElementById('decay-chart').getContext('2d');
+  if (decayChart) decayChart.destroy();
+  if (!decayData.length) return;
+
+  const colors = ['#E8735A', '#6366F1', '#10B981', '#F59E0B', '#EC4899', '#3B82F6'];
+
+  const datasets = decayData.slice(0, 6).map((post, i) => {
+    const points = (post.decay_points || []).sort((a, b) => a.hours - b.hours);
+    // Compute cumulative impressions
+    let cumulative = 0;
+    const cumulativeData = points.map(p => {
+      cumulative += (p.impressions || 0);
+      return { x: p.hours, y: cumulative };
+    });
+
+    const label = (post.content_preview || 'Post ' + (i + 1)).slice(0, 30);
+    return {
+      label,
+      data: cumulativeData,
+      borderColor: colors[i % colors.length],
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      pointRadius: 1,
+      tension: 0.3
+    };
+  });
+
+  // Find max hours across all datasets
+  let maxHours = 0;
+  datasets.forEach(ds => {
+    ds.data.forEach(p => { if (p.x > maxHours) maxHours = p.x; });
+  });
+
+  decayChart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'nearest', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { font: { family: 'Inter', size: 9 }, boxWidth: 10 } }
+      },
+      scales: {
+        x: {
+          type: 'linear', min: 0, max: maxHours || 72,
+          title: { display: true, text: 'Hours since publish', font: { family: 'Inter', size: 10 }, color: '#6B7280' },
+          ticks: { font: { family: 'JetBrains Mono', size: 10 } },
+          grid: { color: '#F3F4F6' }
+        },
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: 'Cumulative Impressions', font: { family: 'Inter', size: 10 }, color: '#6B7280' },
+          ticks: { font: { family: 'JetBrains Mono', size: 10 } },
+          grid: { color: '#F3F4F6' }
+        }
+      }
+    }
+  });
+}
+
+function renderContentInsights(insights) {
+  const container = document.getElementById('content-insights');
+  if (!insights.length) {
+    container.innerHTML = '<div class="empty-state">No content insights available</div>';
+    return;
+  }
+
+  container.innerHTML = insights.map(ins => {
+    const typeLabel = (ins.insight_type || 'insight').replace(/_/g, ' ');
+    return `<div class="insight-card">
+      <span class="insight-badge">${typeLabel}</span>
+      <span class="insight-name">${ins.metric_name || '--'}</span>
+      <span class="insight-metric">${typeof ins.metric_value === 'number' ? ins.metric_value.toFixed(1) : ins.metric_value || '--'}</span>
+    </div>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1215,10 +1674,12 @@ function renderBadges() {
   if (errs > 0) { ob.textContent = errs; ob.style.display = 'inline'; ob.className = 'tab-badge'; }
   else ob.style.display = 'none';
 
-  // HLL badge: extraction coverage
+  // HLL badge: Sky-Lynx pending HIL (priority) or extraction coverage
+  const slHil = reportData.tabs?.hll?.sky_lynx_hil || {};
   const cov = reportData.tabs?.hll?.extraction?.coverage_pct || 0;
   const hb = document.getElementById('badge-hll');
-  if (cov < 50) { hb.textContent = Math.round(cov) + '%'; hb.style.display = 'inline'; }
+  if (slHil.has_pending) { hb.textContent = slHil.pending_count; hb.style.display = 'inline'; hb.className = 'tab-badge warning'; }
+  else if (cov < 50) { hb.textContent = Math.round(cov) + '%'; hb.style.display = 'inline'; hb.className = 'tab-badge warning'; }
   else hb.style.display = 'none';
 
   // Strategy badge: total evaluations
