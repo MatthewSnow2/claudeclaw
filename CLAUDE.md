@@ -56,12 +56,21 @@ When Matthew (or any pipeline input) surfaces a NEW idea, project concept, or "w
 If the idea fails the filter, say so plainly: "This doesn't pass the Christensen filter because [reason]. Want to proceed anyway or shelf it?"
 If it passes, state why in one line and proceed to execution.
 
+**Auto-logging:** Every time the Christensen filter fires, log the evaluation to the `christensen_log` table in `store/claudeclaw.db`. Use this SQL pattern:
+```sql
+INSERT INTO christensen_log (chat_id, idea, job_to_do, serves_m2ai, beachhead, outcome, reasoning, source, created_at)
+VALUES ('<chat_id>', '<idea summary>', '<job answer>', '<m2ai answer>', '<beachhead answer>', '<pass|fail|override>', '<one-line reasoning>', 'conversation', <unix_epoch>);
+```
+Outcome values: `pass` (idea approved), `fail` (idea rejected), `override` (Matthew said "just build it"). This data feeds the Strategy tab on the EAC Command Center dashboard.
+
 **Context:** Matthew is an ENTP. Idea generation is unlimited. Execution bandwidth is not. The filter exists to prevent optionality-as-strategy and keep focus on the beachhead market.
 
 ## Your Environment
 
-- **Machine**: Linux workstation at `/home/apexaipc/`
-- **All global Claude Code skills** (`~/.claude/skills/`) are available — invoke them when relevant
+- **Machine**: Linux workstation (ProBook) at `/home/apexaipc/`, LAN IP: `10.0.0.46`
+- **Matthew browses from**: Surface tablet (separate machine on LAN). NEVER use `localhost` in URLs given to Matthew -- always use `10.0.0.46` with the appropriate port.
+- **AlienPC** (gaming PC): SSH-accessible from ProBook for Unity builds and GPU workloads
+- **All global Claude Code skills** (`~/.claude/skills/`) are available -- invoke them when relevant
 - **Tools available**: Bash, file system, web search, browser automation, and all MCP servers configured in Claude settings
 - **This project** lives at: `/home/apexaipc/projects/claudeclaw/`
 - **Shared secrets**: `~/.env.shared` (Anthropic, Gemini, Perplexity, GitHub, Vercel, Railway, Notion, Slack, and more)
@@ -74,7 +83,7 @@ Matthew can route messages to different backends using `@prefix` syntax:
 |--------|---------|----------|
 | *(none)* | Claude Code (you) | Default — full tool access, coding, analysis |
 | `@claude` | Claude Code (you) | Explicit Claude routing |
-| `@gemini` | Gemini 2.0 Flash | Fast general queries, Google ecosystem |
+| `@gemini` | Gemini 3.1 Pro | Logic/reasoning tasks, Google ecosystem, two-minds synthesis |
 | `@research` or `@perplexity` | Perplexity Sonar | Web research, current events, citations |
 | `@ollama` or `@local` or `@private` | Ollama (local) | Private/offline queries, qwen2.5:7b-instruct |
 | `@gpt` | OpenAI GPT | When available (key in ~/.env.shared) |
@@ -140,6 +149,48 @@ Save session summary to memory before starting a new session:
 1. Write a 3-5 bullet summary of key decisions, findings, and state
 2. Insert into the memories table as a semantic memory with salience 5.0
 3. Confirm: "Checkpoint saved. Safe to /newchat."
+
+## Dashboard & UI Standards
+
+### Tier 1 Agent Card Format (Standard)
+
+All Tier 1 agent cards follow this format. Update `index.html` and `generate_report.py` only when changing this spec.
+
+**Layout (6-column grid, responsive):**
+- 1024px: 3-column
+- 768px: 2-column
+- Mobile: 1-column
+
+**Card structure:**
+```
+┌────────────────────────────────┐
+│ ● Agent Name                   │
+│   Agent Role                   │
+│   [40px img]            (56px) │
+│                          donut │
+│ 3d 2h | 84MB | Q:0             │
+│ Done: 19m ago                  │
+└────────────────────────────────┘
+```
+
+**Spacing & sizing:**
+- Padding: 8px | Border-left: 3px | Border-radius: 8px
+- Image: 40px, left-aligned under name/role
+- Donut: 56px, right-aligned same row as image
+- Fonts: Name 12px | Role 10px | Stats 10px
+- Status dot: 6px
+- All images: standard size (40px), one consistent format (webp preferred)
+
+**Stats line:** `<uptime> | <total_size> | Q:<queue_count>`
+**Done line:** `Done: <time_ago> ago`
+
+**Agent images:**
+- Transparent background preferred
+- Format: webp (primary) + PNG (fallback)
+- Size: 40x40px display, 48x48px source
+- Location: `/workspace/agents/`
+
+This is the reference. Any future iteration requires explicit approval.
 
 ## Security -- Non-Negotiable
 
