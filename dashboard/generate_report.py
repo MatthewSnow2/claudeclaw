@@ -1227,35 +1227,26 @@ def get_social_analytics():
     except Exception:
         pass
 
-    # --- Best Time Heatmap (from content_insights best_time entries) ---
+    # --- Best Time Heatmap (from best_time_analysis table) ---
     try:
-        ci_exists = db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='content_insights'"
+        bta_exists = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='best_time_analysis'"
         ).fetchone()
-        if ci_exists:
+        if bta_exists:
             bt_rows = db.execute("""
-                SELECT insight_key, insight_value, metric_value, sample_size
-                FROM content_insights
-                WHERE insight_type = 'best_time'
-                ORDER BY generated_at DESC, metric_value DESC
+                SELECT day_of_week, hour, score, impressions, engagement_rate, post_count
+                FROM best_time_analysis
+                WHERE collected_at = (SELECT MAX(collected_at) FROM best_time_analysis)
+                ORDER BY score DESC
             """).fetchall()
-            seen_keys = set()
             for row in bt_rows:
-                key = row["insight_key"]
-                if key in seen_keys:
-                    continue
-                seen_keys.add(key)
-                try:
-                    detail = json.loads(row["insight_value"])
-                except Exception:
-                    continue
                 result["best_time_heatmap"].append({
-                    "day": detail.get("day", ""),
-                    "hour": detail.get("hour", 0),
-                    "score": round(detail.get("avg_engagement", 0), 4),
-                    "impressions": 0,
-                    "engagement_rate": round(detail.get("avg_engagement", 0), 4),
-                    "post_count": detail.get("post_count", 0),
+                    "day": row["day_of_week"] or "",
+                    "hour": row["hour"] or 0,
+                    "score": round(row["score"] or 0.0, 4),
+                    "impressions": row["impressions"] or 0,
+                    "engagement_rate": round(row["engagement_rate"] or 0.0, 4),
+                    "post_count": row["post_count"] or 0,
                 })
     except Exception:
         pass
@@ -1347,29 +1338,26 @@ def get_social_analytics():
         ).fetchone()
         if table_exists:
             latest_date = db.execute(
-                "SELECT MAX(generated_at) as latest FROM content_insights"
+                "SELECT MAX(analysis_date) as latest FROM content_insights"
             ).fetchone()
             if latest_date and latest_date["latest"]:
-                # Get the date prefix for the latest analysis run
-                latest_prefix = latest_date["latest"][:10]
                 ci_rows = db.execute("""
-                    SELECT insight_type, insight_key, insight_value, metric_value, sample_size
+                    SELECT insight_type, metric_name, metric_value, detail_json
                     FROM content_insights
-                    WHERE generated_at LIKE ?
+                    WHERE analysis_date = ?
                     ORDER BY metric_value DESC
-                """, (f"{latest_prefix}%",)).fetchall()
+                """, (latest_date["latest"],)).fetchall()
                 for row in ci_rows:
                     detail = {}
                     try:
-                        detail = json.loads(row["insight_value"]) if row["insight_value"] else {}
+                        detail = json.loads(row["detail_json"]) if row["detail_json"] else {}
                     except (json.JSONDecodeError, TypeError):
                         pass
                     result["content_insights"].append({
                         "insight_type": row["insight_type"] or "",
-                        "metric_name": row["insight_key"] or "",
+                        "metric_name": row["metric_name"] or "",
                         "metric_value": round(row["metric_value"] or 0.0, 4),
                         "detail": detail,
-                        "sample_size": row["sample_size"] or 0,
                     })
     except Exception:
         pass
