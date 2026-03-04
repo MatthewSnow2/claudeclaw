@@ -381,6 +381,14 @@
   }
   .insight-metric { font-size: 14px; font-weight: 600; font-family: 'JetBrains Mono', monospace; color: var(--accent); }
   .insight-name { font-size: 13px; font-weight: 500; }
+
+  /* Topic performance bar chart */
+  .topic-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #F3F4F6; }
+  .topic-row:last-child { border-bottom: none; }
+  .topic-name { width: 120px; font-size: 13px; font-weight: 600; flex-shrink: 0; }
+  .topic-bar-track { flex: 1; height: 20px; background: #F3F4F6; border-radius: 4px; overflow: hidden; }
+  .topic-bar-fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.3s; display: flex; align-items: center; padding-left: 8px; font-size: 11px; color: white; font-weight: 600; }
+  .topic-stats { font-size: 11px; color: var(--text-secondary); width: 100px; text-align: right; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -593,6 +601,15 @@
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- Topic Performance -->
+    <div class="section-card">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h3>Topic Performance</h3>
+        <span class="chevron">&#9662;</span>
+      </div>
+      <div class="section-body" id="social-topics"></div>
     </div>
 
     <!-- Best Posting Time Heatmap -->
@@ -1270,6 +1287,9 @@ function renderSocialPerformance() {
   // 3. Top Posts Table
   renderTopPosts(social);
 
+  // 3b. Topic Performance
+  renderTopicPerformance(social.topic_performance || []);
+
   // 4. Best Posting Time Heatmap
   renderPostingHeatmap(social.best_time_heatmap || []);
 
@@ -1277,7 +1297,7 @@ function renderSocialPerformance() {
   renderFollowerChart(social.follower_trend || []);
 
   // 6. Content Decay Curves
-  renderDecayChart(social.content_decay_recent || []);
+  renderDecayChart(social.content_decay || []);
 
   // 7. Content Insights
   renderContentInsights(social.content_insights || []);
@@ -1381,6 +1401,28 @@ function switchTopPosts(view, btn) {
   btn.classList.add('active');
   const social = reportData.tabs?.strategy?.social_analytics;
   if (social) renderTopPosts(social);
+}
+
+function renderTopicPerformance(topics) {
+  const container = document.getElementById('social-topics');
+  if (!topics.length) {
+    container.innerHTML = '<div class="empty-state">No topic performance data yet</div>';
+    return;
+  }
+
+  const maxEng = Math.max(...topics.map(t => t.avg_engagement || 0), 1);
+
+  container.innerHTML = topics.map(t => {
+    const barWidth = Math.round(((t.avg_engagement || 0) / maxEng) * 100);
+    const engLabel = (t.avg_engagement || 0).toFixed(1) + '%';
+    return `<div class="topic-row">
+      <div class="topic-name">${t.topic || 'Unknown'}</div>
+      <div class="topic-bar-track">
+        <div class="topic-bar-fill" style="width:${barWidth}%">${barWidth > 15 ? engLabel : ''}</div>
+      </div>
+      <div class="topic-stats">${t.post_count || 0} posts | ${(t.total_impressions || 0).toLocaleString()} imp</div>
+    </div>`;
+  }).join('');
 }
 
 function renderPostingHeatmap(heatmapData) {
@@ -1504,7 +1546,7 @@ function renderDecayChart(decayData) {
   const colors = ['#E8735A', '#6366F1', '#10B981', '#F59E0B', '#EC4899', '#3B82F6'];
 
   const datasets = decayData.slice(0, 6).map((post, i) => {
-    const points = (post.decay_points || []).sort((a, b) => a.hours - b.hours);
+    const points = (post.data_points || post.decay_points || []).sort((a, b) => a.hours - b.hours);
     // Compute cumulative impressions
     let cumulative = 0;
     const cumulativeData = points.map(p => {

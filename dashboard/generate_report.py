@@ -33,7 +33,7 @@ METROPLEX_DB = PROJECTS_DIR / "metroplex" / "data" / "metroplex.db"
 CLAUDECLAW_DB = PROJECTS_DIR / "claudeclaw" / "store" / "claudeclaw.db"
 IDEAFORGE_DB = PROJECTS_DIR / "ideaforge" / "data" / "ideaforge.db"
 PERSONA_METRICS_DB = ST_FACTORY_DIR / "persona_metrics.db"
-STARSCREAM_DB = PROJECTS_DIR / "claudeclaw" / "store" / "starscream_analytics.db"
+STARSCREAM_ANALYTICS_DB = PROJECTS_DIR / "claudeclaw" / "store" / "starscream_analytics.db"
 
 # PM2 process name to agent identity mapping
 PM2_TO_AGENT = {
@@ -156,6 +156,9 @@ def get_agent_data():
                 total_failed = db.execute(
                     "SELECT COUNT(*) FROM dispatch_queue WHERE worker_type=? AND status='failed'", (wtype,)
                 ).fetchone()[0]
+                total_cancelled = db.execute(
+                    "SELECT COUNT(*) FROM dispatch_queue WHERE worker_type=? AND status='cancelled'", (wtype,)
+                ).fetchone()[0]
 
                 result["queue_stats"][wtype] = {
                     "queued": queued,
@@ -166,6 +169,7 @@ def get_agent_data():
                     "avg_duration_seconds": round(avg_duration) if avg_duration else None,
                     "total_completed": total_completed,
                     "total_failed": total_failed,
+                    "total_cancelled": total_cancelled,
                 }
 
             # --- Scheduled Tasks ---
@@ -491,9 +495,10 @@ def get_pipeline_health():
         "pipeline_health": "unknown",
     }
 
-    # Check cron
+    # Check cron (user crontab + system cron.d)
     cron_out = run("crontab -l 2>/dev/null")
-    result["research_agents_cron"] = "research" in cron_out.lower()
+    crond_exists = Path("/etc/cron.d/research-agents").exists()
+    result["research_agents_cron"] = "research" in cron_out.lower() or crond_exists
 
     # Last research signal age (from ST Factory persona_metrics.db)
     if PERSONA_METRICS_DB.exists():
@@ -1077,35 +1082,35 @@ def get_christensen_data():
 # ============================================================================
 
 def get_social_analytics():
-    """Query starscream_analytics.db for social media metrics. Returns structured JSON for the Strategy tab."""
+    """Gather Starscream social media analytics for the Strategy tab."""
     result = {
         "kpi": {
-            "total_impressions_30d": 0,
-            "avg_engagement_rate_30d": 0.0,
+            "total_impressions": 0,
+            "avg_engagement_rate": 0.0,
             "follower_count": 0,
-            "follower_change_7d": 0,
-            "post_count_30d": 0,
-            "top_engagement_rate": 0.0,
+            "total_posts": 0,
+            "new_followers_7d": 0,
         },
         "top_posts_7d": [],
         "top_posts_30d": [],
+        "topic_performance": [],
         "best_time_heatmap": [],
         "posting_frequency": {
-            "current_posts_per_week": 0.0,
-            "optimal_posts_per_week": 0.0,
-            "correlation": 0.0,
+            "posts_per_week": 0.0,
+            "avg_engagement_rate": 0.0,
+            "optimal_frequency": None,
+            "correlation_score": None,
         },
         "follower_trend": [],
-        "content_decay_recent": [],
         "content_insights": [],
-        "daily_trend": [],
+        "content_decay": [],
     }
 
-    if not STARSCREAM_DB.exists():
+    if not STARSCREAM_ANALYTICS_DB.exists():
         return result
 
     try:
-        db = sqlite3.connect(str(STARSCREAM_DB), timeout=5)
+        db = sqlite3.connect(str(STARSCREAM_ANALYTICS_DB), timeout=5)
         db.row_factory = sqlite3.Row
     except Exception:
         return result
@@ -1114,7 +1119,7 @@ def get_social_analytics():
     cutoff_30d = (now - timedelta(days=30)).isoformat()
     cutoff_7d = (now - timedelta(days=7)).isoformat()
 
-    # --- KPIs from daily_aggregate (30d) ---
+    # --- KPIs from daily_aggregate ---
     try:
         kpi_row = db.execute("""
             SELECT
@@ -1125,9 +1130,9 @@ def get_social_analytics():
             WHERE date >= ?
         """, (cutoff_30d[:10],)).fetchone()
         if kpi_row:
-            result["kpi"]["total_impressions_30d"] = kpi_row["total_imp"]
-            result["kpi"]["avg_engagement_rate_30d"] = round(kpi_row["avg_eng"], 4)
-            result["kpi"]["post_count_30d"] = kpi_row["post_count"]
+            result["kpi"]["total_impressions"] = kpi_row["total_imp"]
+            result["kpi"]["avg_engagement_rate"] = round(kpi_row["avg_eng"], 4)
+            result["kpi"]["total_posts"] = kpi_row["post_count"]
     except Exception:
         pass
 
@@ -1137,35 +1142,19 @@ def get_social_analytics():
             "SELECT follower_count FROM daily_aggregate ORDER BY date DESC LIMIT 1"
         ).fetchone()
         if fc_row:
-            result["kpi"]["follower_count"] = fc_row["follower_count"]
+            result["kpi"]["follower_count"] = fc_row["follower_count"] or 0
     except Exception:
         pass
 
-    # Follower change over 7 days
+    # New followers over 7 days (sum new_followers_24h from follower_metrics)
     try:
-        fc_7d = db.execute("""
-            SELECT
-                (SELECT total_followers FROM follower_metrics ORDER BY collected_at DESC LIMIT 1)
-                -
-                COALESCE(
-                    (SELECT total_followers FROM follower_metrics WHERE collected_at <= ? ORDER BY collected_at DESC LIMIT 1),
-                    (SELECT total_followers FROM follower_metrics ORDER BY collected_at ASC LIMIT 1)
-                ) as change_7d
-        """, (cutoff_7d,)).fetchone()
-        if fc_7d and fc_7d["change_7d"] is not None:
-            result["kpi"]["follower_change_7d"] = fc_7d["change_7d"]
-    except Exception:
-        pass
-
-    # Top engagement rate (30d, from post_metrics with latest snapshot per post)
-    try:
-        top_eng = db.execute("""
-            SELECT MAX(engagement_rate) as top_er
-            FROM post_metrics
+        nf_row = db.execute("""
+            SELECT COALESCE(SUM(new_followers_24h), 0) as new_7d
+            FROM follower_metrics
             WHERE collected_at >= ?
-        """, (cutoff_30d,)).fetchone()
-        if top_eng and top_eng["top_er"] is not None:
-            result["kpi"]["top_engagement_rate"] = round(top_eng["top_er"], 4)
+        """, (cutoff_7d,)).fetchone()
+        if nf_row:
+            result["kpi"]["new_followers_7d"] = nf_row["new_7d"]
     except Exception:
         pass
 
@@ -1188,12 +1177,12 @@ def get_social_analytics():
             result["top_posts_7d"].append({
                 "id": str(row["id"]),
                 "content_preview": row["content_preview"] or "",
-                "published_at": row["published_at"] or "",
                 "likes": row["likes"] or 0,
                 "comments": row["comments"] or 0,
                 "shares": row["shares"] or 0,
                 "impressions": row["impressions"] or 0,
                 "engagement_rate": round(row["engagement_rate"] or 0.0, 4),
+                "published_at": row["published_at"] or "",
             })
     except Exception:
         pass
@@ -1217,62 +1206,115 @@ def get_social_analytics():
             result["top_posts_30d"].append({
                 "id": str(row["id"]),
                 "content_preview": row["content_preview"] or "",
-                "published_at": row["published_at"] or "",
                 "likes": row["likes"] or 0,
                 "comments": row["comments"] or 0,
                 "shares": row["shares"] or 0,
                 "impressions": row["impressions"] or 0,
                 "engagement_rate": round(row["engagement_rate"] or 0.0, 4),
+                "published_at": row["published_at"] or "",
             })
     except Exception:
         pass
 
-    # --- Best Time Heatmap (from best_time_analysis table) ---
+    # --- Topic Performance (cross-DB: post_metrics + posted_content from claudeclaw.db) ---
+    try:
+        # Load posted_content from claudeclaw.db to map post IDs to topics
+        if CLAUDECLAW_DB.exists():
+            claw_db = sqlite3.connect(str(CLAUDECLAW_DB), timeout=5)
+            claw_db.row_factory = sqlite3.Row
+            posted_rows = claw_db.execute(
+                "SELECT id, late_post_id, topic FROM posted_content WHERE topic IS NOT NULL"
+            ).fetchall()
+            claw_db.close()
+
+            # Build lookup: late_post_id -> topic (and id -> topic as fallback)
+            topic_by_post = {}
+            for pr in posted_rows:
+                if pr["late_post_id"]:
+                    topic_by_post[str(pr["late_post_id"])] = pr["topic"]
+                if pr["id"]:
+                    topic_by_post[str(pr["id"])] = pr["topic"]
+
+            # Get latest snapshot per post from post_metrics
+            pm_rows = db.execute("""
+                SELECT p.id, p.engagement_rate, p.impressions
+                FROM post_metrics p
+                INNER JOIN (
+                    SELECT id, MAX(collected_at) as max_collected
+                    FROM post_metrics
+                    GROUP BY id
+                ) latest ON p.id = latest.id AND p.collected_at = latest.max_collected
+            """).fetchall()
+
+            # Aggregate by topic
+            topic_agg = {}
+            for pm in pm_rows:
+                post_id = str(pm["id"])
+                topic = topic_by_post.get(post_id)
+                if not topic:
+                    continue
+                if topic not in topic_agg:
+                    topic_agg[topic] = {"post_count": 0, "total_engagement": 0.0, "total_impressions": 0}
+                topic_agg[topic]["post_count"] += 1
+                topic_agg[topic]["total_engagement"] += (pm["engagement_rate"] or 0.0)
+                topic_agg[topic]["total_impressions"] += (pm["impressions"] or 0)
+
+            for topic, data in sorted(topic_agg.items(), key=lambda x: x[1]["total_impressions"], reverse=True):
+                avg_eng = data["total_engagement"] / data["post_count"] if data["post_count"] > 0 else 0.0
+                result["topic_performance"].append({
+                    "topic": topic,
+                    "post_count": data["post_count"],
+                    "avg_engagement": round(avg_eng, 4),
+                    "total_impressions": data["total_impressions"],
+                })
+    except Exception:
+        pass
+
+    # --- Best Time Heatmap (latest batch from best_time_analysis) ---
     try:
         bta_exists = db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='best_time_analysis'"
         ).fetchone()
         if bta_exists:
             bt_rows = db.execute("""
-                SELECT day_of_week, hour, score, impressions, engagement_rate, post_count
+                SELECT day_of_week, hour, avg_engagement, post_count
                 FROM best_time_analysis
                 WHERE collected_at = (SELECT MAX(collected_at) FROM best_time_analysis)
-                ORDER BY score DESC
+                ORDER BY avg_engagement DESC
             """).fetchall()
             for row in bt_rows:
                 result["best_time_heatmap"].append({
-                    "day": row["day_of_week"] or "",
+                    "day_of_week": row["day_of_week"],
                     "hour": row["hour"] or 0,
-                    "score": round(row["score"] or 0.0, 4),
-                    "impressions": row["impressions"] or 0,
-                    "engagement_rate": round(row["engagement_rate"] or 0.0, 4),
+                    "avg_engagement": round(row["avg_engagement"] or 0.0, 4),
                     "post_count": row["post_count"] or 0,
                 })
     except Exception:
         pass
 
-    # --- Posting Frequency (from posting_frequency, most recent) ---
+    # --- Posting Frequency (latest from posting_frequency table) ---
     try:
         table_exists = db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='posting_frequency'"
         ).fetchone()
         if table_exists:
             pf_row = db.execute("""
-                SELECT current_posts_per_week, optimal_posts_per_week, correlation
+                SELECT posts_per_week, avg_engagement_rate, optimal_frequency, correlation_score
                 FROM posting_frequency
                 ORDER BY collected_at DESC
                 LIMIT 1
             """).fetchone()
             if pf_row:
                 result["posting_frequency"] = {
-                    "current_posts_per_week": round(pf_row["current_posts_per_week"] or 0.0, 2),
-                    "optimal_posts_per_week": round(pf_row["optimal_posts_per_week"] or 0.0, 2),
-                    "correlation": round(pf_row["correlation"] or 0.0, 4),
+                    "posts_per_week": round(pf_row["posts_per_week"] or 0.0, 2),
+                    "avg_engagement_rate": round(pf_row["avg_engagement_rate"] or 0.0, 4),
+                    "optimal_frequency": round(pf_row["optimal_frequency"], 2) if pf_row["optimal_frequency"] is not None else None,
+                    "correlation_score": round(pf_row["correlation_score"], 4) if pf_row["correlation_score"] is not None else None,
                 }
     except Exception:
         pass
 
-    # --- Follower Trend (last 30 data points) ---
+    # --- Follower Trend (last 30 entries, chronological) ---
     try:
         ft_rows = db.execute("""
             SELECT collected_at, total_followers, new_followers_24h
@@ -1283,35 +1325,55 @@ def get_social_analytics():
         for row in ft_rows:
             result["follower_trend"].append({
                 "date": row["collected_at"],
-                "total": row["total_followers"] or 0,
-                "new_24h": row["new_followers_24h"] or 0,
+                "total_followers": row["total_followers"] or 0,
+                "new_followers_24h": row["new_followers_24h"] or 0,
             })
-        # Reverse so oldest is first (chronological order)
         result["follower_trend"].reverse()
     except Exception:
         pass
 
-    # --- Content Decay Recent (last 5 posts with decay data) ---
+    # --- Content Insights (all rows from content_insights, parse data_json) ---
+    try:
+        table_exists = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='content_insights'"
+        ).fetchone()
+        if table_exists:
+            ci_rows = db.execute("""
+                SELECT id, insight_type, data_json, confidence, generated_at
+                FROM content_insights
+                ORDER BY generated_at DESC
+            """).fetchall()
+            for row in ci_rows:
+                data = {}
+                try:
+                    data = json.loads(row["data_json"]) if row["data_json"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                result["content_insights"].append({
+                    "insight_type": row["insight_type"] or "",
+                    "data": data,
+                    "confidence": round(row["confidence"] or 0.0, 4) if row["confidence"] is not None else None,
+                    "generated_at": row["generated_at"] or "",
+                })
+    except Exception:
+        pass
+
+    # --- Content Decay (top 5 recent posts with decay curves) ---
     try:
         table_exists = db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='content_decay'"
         ).fetchone()
         if table_exists:
-            # Get distinct post_ids with decay data, most recent first
             decay_posts = db.execute("""
-                SELECT DISTINCT cd.post_id, pm.content_preview
-                FROM content_decay cd
-                LEFT JOIN post_metrics pm ON cd.post_id = pm.id
-                    AND pm.collected_at = (SELECT MAX(collected_at) FROM post_metrics WHERE id = cd.post_id)
-                ORDER BY cd.post_id DESC
+                SELECT DISTINCT post_id
+                FROM content_decay
+                ORDER BY post_id DESC
                 LIMIT 5
             """).fetchall()
             for dp in decay_posts:
                 post_id = dp["post_id"]
-                preview = dp["content_preview"] or ""
-                # Get decay points for this post
                 decay_points = db.execute("""
-                    SELECT hours_since_publish, cumulative_impressions, cumulative_engagement
+                    SELECT hours_since_publish, cumulative_engagement, cumulative_impressions
                     FROM content_decay
                     WHERE post_id = ?
                     ORDER BY hours_since_publish ASC
@@ -1320,66 +1382,13 @@ def get_social_analytics():
                 for pt in decay_points:
                     points.append({
                         "hours": pt["hours_since_publish"] or 0,
-                        "impressions": pt["cumulative_impressions"] or 0,
                         "engagement": pt["cumulative_engagement"] or 0,
+                        "impressions": pt["cumulative_impressions"] or 0,
                     })
-                result["content_decay_recent"].append({
+                result["content_decay"].append({
                     "post_id": str(post_id),
-                    "content_preview": preview,
-                    "decay_points": points,
+                    "data_points": points,
                 })
-    except Exception:
-        pass
-
-    # --- Content Insights (from content_insights table, most recent analysis) ---
-    try:
-        table_exists = db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='content_insights'"
-        ).fetchone()
-        if table_exists:
-            latest_date = db.execute(
-                "SELECT MAX(analysis_date) as latest FROM content_insights"
-            ).fetchone()
-            if latest_date and latest_date["latest"]:
-                ci_rows = db.execute("""
-                    SELECT insight_type, metric_name, metric_value, detail_json
-                    FROM content_insights
-                    WHERE analysis_date = ?
-                    ORDER BY metric_value DESC
-                """, (latest_date["latest"],)).fetchall()
-                for row in ci_rows:
-                    detail = {}
-                    try:
-                        detail = json.loads(row["detail_json"]) if row["detail_json"] else {}
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-                    result["content_insights"].append({
-                        "insight_type": row["insight_type"] or "",
-                        "metric_name": row["metric_name"] or "",
-                        "metric_value": round(row["metric_value"] or 0.0, 4),
-                        "detail": detail,
-                    })
-    except Exception:
-        pass
-
-    # --- Daily Trend (last 30 days from daily_aggregate) ---
-    try:
-        dt_rows = db.execute("""
-            SELECT date, total_impressions, total_likes, total_comments, avg_engagement_rate
-            FROM daily_aggregate
-            ORDER BY date DESC
-            LIMIT 30
-        """).fetchall()
-        for row in dt_rows:
-            result["daily_trend"].append({
-                "date": row["date"],
-                "impressions": row["total_impressions"] or 0,
-                "likes": row["total_likes"] or 0,
-                "comments": row["total_comments"] or 0,
-                "engagement_rate": round(row["avg_engagement_rate"] or 0.0, 4),
-            })
-        # Reverse so oldest is first (chronological order)
-        result["daily_trend"].reverse()
     except Exception:
         pass
 

@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EAC Tutor - Meet Your Chief of Staff</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    /* LCARS Lower Decks Palette - USS Cerritos Bridge */
+    --bg: #110E2B;
+    --bg-card: #1C1845;
+    --bg-card-hover: #252060;
+    --text: #D4DAF0;
+    --text-dim: #8B8FB8;
+    --text-bright: #FFFFFF;
+    --gold: #F0A030;
+    --gold-dim: #CC8820;
+    --gold-glow: rgba(240, 160, 48, 0.15);
+    --accent: #FF6B4A;
+    --accent-light: rgba(255, 107, 74, 0.15);
+    --teal: #40E0D0;
+    --teal-dim: rgba(64, 224, 208, 0.12);
+    --green: #22D17E;
+    --green-dim: rgba(34, 209, 126, 0.12);
+    --red: #E8364F;
+    --red-dim: rgba(232, 54, 79, 0.12);
+    --purple: #CC66FF;
+    --purple-dim: rgba(204, 102, 255, 0.12);
+    --lcars-blue: #5599FF;
+    --lcars-magenta: #CC33CC;
+    --border: rgba(85, 153, 255, 0.15);
+    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Starfield background ── */
+  .starfield {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 0;
+  }
+  .star {
+    position: absolute; border-radius: 50%; background: white;
+    animation: twinkle var(--dur) ease-in-out infinite;
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: var(--min-o); }
+    50% { opacity: var(--max-o); }
+  }
+
+  /* ── Main layout ── */
+  .tutor-container {
+    position: relative; z-index: 1;
+    max-width: 960px; margin: 0 auto; padding: 32px 24px;
+  }
+
+  /* ── Header ── */
+  .tutor-header {
+    text-align: center; margin-bottom: 40px;
+  }
+  .tutor-header h1 {
+    font-size: 28px; font-weight: 800; color: var(--text-bright);
+    letter-spacing: -0.5px;
+  }
+  .tutor-header h1 span { color: var(--gold); }
+  .tutor-header .subtitle {
+    font-size: 14px; color: var(--text-dim); margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── Progress bar ── */
+  .progress-bar {
+    display: flex; gap: 4px; margin-bottom: 32px; padding: 0 40px;
+  }
+  .progress-segment {
+    flex: 1; height: 4px; border-radius: 2px;
+    background: var(--border); transition: background 0.4s ease;
+  }
+  .progress-segment.visited { background: var(--lcars-blue); opacity: 0.6; }
+  .progress-segment.active { background: var(--gold); box-shadow: 0 0 8px var(--gold-glow); }
+
+  /* ── Slide container ── */
+  .slide-viewport {
+    position: relative; overflow: hidden;
+    min-height: 520px;
+  }
+  .slide {
+    display: none; opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .slide.active {
+    display: flex; opacity: 1;
+    flex-direction: column; gap: 24px;
+  }
+
+  /* ── Character stage ── */
+  .character-stage {
+    display: flex; justify-content: center; align-items: flex-end;
+    margin-bottom: 8px;
+  }
+  .data-character {
+    width: 180px; height: 220px;
+    animation: float 3s ease-in-out infinite;
+    filter: drop-shadow(0 8px 16px rgba(0,0,0,0.4));
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  /* ── Speech bubble (LCARS comm panel) ── */
+  .speech-bubble {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--gold);
+    border-radius: 4px 12px 12px 4px;
+    padding: 20px 24px;
+    position: relative; box-shadow: var(--shadow);
+  }
+  .speech-bubble::before {
+    content: ''; position: absolute; top: -8px; left: 50%;
+    transform: translateX(-50%);
+    width: 16px; height: 16px; background: var(--bg-card);
+    border-left: 1px solid var(--border); border-top: 1px solid var(--border);
+    transform: translateX(-50%) rotate(45deg);
+  }
+  .speech-bubble::after {
+    content: ''; position: absolute;
+    top: 0; left: -5px; width: 5px; height: 24px;
+    background: var(--gold);
+    border-radius: 0 0 0 12px;
+  }
+  .speech-bubble .speaker {
+    font-size: 11px; font-family: 'JetBrains Mono', monospace;
+    color: var(--gold); text-transform: uppercase; letter-spacing: 2px;
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .speech-bubble .speaker::after {
+    content: ''; flex: 1; height: 1px;
+    background: linear-gradient(to right, var(--gold), transparent);
+  }
+  .speech-bubble p {
+    font-size: 15px; line-height: 1.7; color: var(--text);
+  }
+  .speech-bubble p + p { margin-top: 10px; }
+  .speech-bubble strong { color: var(--text-bright); }
+  .speech-bubble code {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    background: rgba(245, 200, 66, 0.1); color: var(--gold);
+    padding: 2px 6px; border-radius: 4px;
+  }
+
+  /* ── Content cards ── */
+  .card-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .info-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px;
+    transition: transform 0.2s, border-color 0.3s;
+  }
+  .info-card:hover {
+    transform: translateY(-2px); border-color: rgba(255,255,255,0.15);
+  }
+  .info-card .card-icon {
+    font-size: 24px; margin-bottom: 8px; display: block;
+  }
+  .info-card .card-title {
+    font-size: 13px; font-weight: 600; color: var(--text-bright);
+    margin-bottom: 4px;
+  }
+  .info-card .card-desc {
+    font-size: 12px; color: var(--text-dim); line-height: 1.5;
+  }
+
+  /* LCARS color-coded card borders (rounded-end left bar) */
+  .info-card.gold { border-left: 4px solid var(--gold); border-radius: 4px 10px 10px 4px; }
+  .info-card.teal { border-left: 4px solid var(--teal); border-radius: 4px 10px 10px 4px; }
+  .info-card.green { border-left: 4px solid var(--green); border-radius: 4px 10px 10px 4px; }
+  .info-card.red { border-left: 4px solid var(--red); border-radius: 4px 10px 10px 4px; }
+  .info-card.purple { border-left: 4px solid var(--purple); border-radius: 4px 10px 10px 4px; }
+  .info-card.accent { border-left: 4px solid var(--accent); border-radius: 4px 10px 10px 4px; }
+  .info-card.lcars-blue { border-left: 4px solid var(--lcars-blue); border-radius: 4px 10px 10px 4px; }
+
+  /* ── Stat bars ── */
+  .stat-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label {
+    font-size: 13px; color: var(--text-dim); min-width: 120px;
+  }
+  .stat-bar-track {
+    flex: 1; height: 8px; background: rgba(255,255,255,0.05);
+    border-radius: 4px; overflow: hidden;
+  }
+  .stat-bar-fill {
+    height: 100%; border-radius: 4px;
+    transition: width 1s ease-out;
+  }
+  .stat-bar-fill.gold { background: var(--gold); }
+  .stat-bar-fill.green { background: var(--green); }
+  .stat-bar-fill.red { background: var(--red); }
+  .stat-bar-fill.teal { background: var(--teal); }
+  .stat-bar-fill.purple { background: var(--purple); }
+  .stat-value {
+    font-size: 13px; font-family: 'JetBrains Mono', monospace;
+    color: var(--text-bright); min-width: 60px; text-align: right;
+  }
+
+  /* ── Stat highlight numbers ── */
+  .big-stat {
+    text-align: center; padding: 16px;
+  }
+  .big-stat .number {
+    font-size: 36px; font-weight: 800; font-family: 'JetBrains Mono', monospace;
+    background: linear-gradient(135deg, var(--gold), var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .big-stat .label {
+    font-size: 12px; color: var(--text-dim); margin-top: 4px;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+
+  /* ── Route table ── */
+  .route-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 13px;
+  }
+  .route-table th {
+    text-align: left; padding: 8px 12px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-dim); border-bottom: 1px solid var(--border);
+  }
+  .route-table td {
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
+  }
+  .route-table tr:last-child td { border-bottom: none; }
+  .route-table code {
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(245, 200, 66, 0.1); color: var(--gold);
+    padding: 2px 6px; border-radius: 4px; font-size: 12px;
+  }
+
+  /* ── Worker fleet visual ── */
+  .fleet-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+  }
+  .worker-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-top: 3px solid var(--lcars-blue);
+    border-radius: 4px 4px 10px 10px; padding: 16px; text-align: center;
+    transition: transform 0.2s, box-shadow 0.3s;
+    position: relative;
+  }
+  .worker-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(85, 153, 255, 0.15);
+    border-top-color: var(--gold);
+  }
+  .worker-card .worker-icon {
+    width: 40px; height: 40px; margin: 0 auto 8px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .worker-card .worker-icon svg { width: 36px; height: 36px; }
+  .worker-card .worker-name {
+    font-size: 14px; font-weight: 600; color: var(--text-bright);
+  }
+  .worker-card .worker-role {
+    font-size: 11px; color: var(--text-dim); margin-top: 2px;
+  }
+  .worker-card .worker-stat {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+  }
+  .worker-card .worker-stat.good { color: var(--green); }
+  .worker-card .worker-stat.warn { color: var(--gold); }
+  .worker-card .worker-stat.bad { color: var(--red); }
+
+  /* ── Coaching callout (LCARS alert panel) ── */
+  .coaching-callout {
+    background: linear-gradient(90deg, rgba(240, 160, 48, 0.08), rgba(204, 102, 255, 0.04));
+    border: 1px solid rgba(240, 160, 48, 0.2);
+    border-left: none;
+    border-radius: 0 10px 10px 0;
+    padding: 16px 20px 16px 24px;
+    display: flex; gap: 12px; align-items: flex-start;
+    position: relative;
+  }
+  .coaching-callout::before {
+    content: ''; position: absolute;
+    left: 0; top: 0; bottom: 0; width: 8px;
+    background: var(--gold);
+    border-radius: 4px 0 0 4px;
+  }
+  .coaching-callout::after {
+    content: 'BRIEFING'; position: absolute;
+    top: -9px; left: 20px;
+    font-size: 9px; font-family: 'JetBrains Mono', monospace;
+    color: var(--gold); letter-spacing: 2px;
+    background: var(--bg); padding: 0 8px;
+  }
+  .coaching-callout .callout-icon { font-size: 18px; flex-shrink: 0; margin-top: 2px; }
+  .coaching-callout .callout-text { font-size: 13px; color: var(--text); line-height: 1.6; }
+  .coaching-callout .callout-text strong { color: var(--gold); }
+
+  /* ── Navigation ── */
+  .slide-nav {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border);
+  }
+  .nav-btn {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 20px; padding: 10px 24px;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500;
+    color: var(--text); cursor: pointer;
+    transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .nav-btn:hover {
+    background: var(--bg-card-hover); border-color: var(--lcars-blue);
+    color: var(--text-bright);
+  }
+  .nav-btn:disabled {
+    opacity: 0.3; cursor: not-allowed;
+  }
+  .nav-btn:disabled:hover {
+    background: var(--bg-card); border-color: var(--border); color: var(--text);
+  }
+  .nav-btn.primary {
+    background: var(--lcars-blue); color: var(--bg); border-color: var(--lcars-blue);
+    font-weight: 600;
+  }
+  .nav-btn.primary:hover {
+    background: var(--gold); border-color: var(--gold); color: var(--bg);
+  }
+  .slide-counter {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  /* ── Section titles in slides ── */
+  .section-title {
+    font-size: 18px; font-weight: 700; color: var(--text-bright);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title .st-icon { font-size: 20px; }
+
+  /* ── Typing animation for speech ── */
+  .typing-cursor {
+    display: inline-block; width: 2px; height: 16px;
+    background: var(--gold); margin-left: 4px;
+    animation: blink 0.8s step-end infinite;
+    vertical-align: text-bottom;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .tutor-container { padding: 16px; }
+    .tutor-header h1 { font-size: 22px; }
+    .data-character { width: 140px; height: 170px; }
+    .card-grid { grid-template-columns: 1fr; }
+    .fleet-grid { grid-template-columns: repeat(2, 1fr); }
+    .progress-bar { padding: 0 16px; }
+  }
+
+  /* ── Fade-in for cards ── */
+  .fade-in {
+    opacity: 0; transform: translateY(12px);
+    animation: fadeUp 0.5s ease forwards;
+  }
+  .fade-in:nth-child(2) { animation-delay: 0.1s; }
+  .fade-in:nth-child(3) { animation-delay: 0.2s; }
+  .fade-in:nth-child(4) { animation-delay: 0.3s; }
+  .fade-in:nth-child(5) { animation-delay: 0.4s; }
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Back link ── */
+  .back-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-dim); text-decoration: none;
+    margin-bottom: 24px; font-family: 'JetBrains Mono', monospace;
+    transition: color 0.2s;
+  }
+  .back-link:hover { color: var(--gold); }
+
+  /* ── LCARS decorative elements ── */
+  .lcars-bar {
+    display: flex; align-items: stretch; gap: 6px;
+    margin-bottom: 20px;
+  }
+  .lcars-elbow {
+    width: 48px; flex-shrink: 0;
+    background: var(--gold);
+    border-radius: 0 0 0 24px;
+    position: relative;
+  }
+  .lcars-elbow::after {
+    content: ''; position: absolute; top: 0; right: 0;
+    width: 24px; height: 100%;
+    background: var(--bg);
+    border-radius: 0 0 0 24px;
+  }
+  .lcars-stripe {
+    flex: 1; display: flex; gap: 4px; align-items: flex-end;
+    padding-bottom: 4px;
+  }
+  .lcars-block {
+    height: 8px; border-radius: 4px;
+  }
+  .lcars-block.b1 { flex: 3; background: var(--lcars-blue); }
+  .lcars-block.b2 { flex: 2; background: var(--purple); }
+  .lcars-block.b3 { flex: 1; background: var(--teal); }
+  .lcars-block.b4 { flex: 2; background: var(--gold); opacity: 0.6; }
+
+  /* LCARS-style section titles */
+  .section-title .st-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; flex-shrink: 0;
+  }
+  .section-title .st-icon svg {
+    width: 22px; height: 22px;
+  }
+
+  /* LCARS panel border (left accent bar with rounded end) */
+  .lcars-panel {
+    position: relative;
+    padding-left: 18px;
+  }
+  .lcars-panel::before {
+    content: ''; position: absolute;
+    left: 0; top: 0; bottom: 0; width: 6px;
+    background: var(--lcars-blue);
+    border-radius: 3px;
+  }
+
+  /* ── Christensen filter visual ── */
+  .filter-gate {
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .gate-question {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 14px; background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  .gate-number {
+    flex-shrink: 0; width: 28px; height: 28px;
+    background: var(--accent); color: var(--bg); border-radius: 6px 6px 6px 14px;
+    font-size: 12px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .gate-text { font-size: 13px; color: var(--text); }
+  .gate-text strong { color: var(--text-bright); }
+
+  /* command list */
+  .command-list {
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .command-item {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 12px; background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  .command-item code {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    background: rgba(245, 200, 66, 0.1); color: var(--gold);
+    padding: 3px 8px; border-radius: 4px; white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .command-item .cmd-desc { font-size: 13px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<!-- Starfield (generated by JS) -->
+<div class="starfield" id="starfield"></div>
+
+<div class="tutor-container">
+
+  <a href="/index.html" class="back-link">&larr; Command Center</a>
+
+  <div class="tutor-header">
+    <h1>Meet <span>Data</span>, Your Chief of Staff</h1>
+    <div class="subtitle">EA-Claude System Walkthrough // Stardate 2026.03</div>
+  </div>
+
+  <!-- LCARS decorative bar -->
+  <div style="display:flex; gap:4px; margin-bottom:24px; padding:0 40px;">
+    <div style="width:60px; height:10px; background:var(--gold); border-radius:5px 0 0 5px;"></div>
+    <div style="flex:2; height:10px; background:var(--lcars-blue); border-radius:2px;"></div>
+    <div style="flex:1; height:10px; background:var(--purple); border-radius:2px;"></div>
+    <div style="flex:1.5; height:10px; background:var(--teal); border-radius:2px;"></div>
+    <div style="width:40px; height:10px; background:var(--gold); border-radius:0 5px 5px 0; opacity:0.6;"></div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-bar" id="progressBar"></div>
+
+  <!-- Slides -->
+  <div class="slide-viewport" id="slideViewport">
+
+    <!-- SLIDE 0: Welcome -->
+    <div class="slide" data-slide="0">
+      <div class="character-stage">
+        <svg class="data-character" viewBox="0 0 180 220" xmlns="http://www.w3.org/2000/svg">
+          <!-- Lower Decks Data - Chibi Android -->
+          <!-- Shadow -->
+          <ellipse cx="90" cy="190" rx="35" ry="8" fill="rgba(245,200,66,0.1)"/>
+          <!-- Legs -->
+          <rect x="72" y="168" width="14" height="28" rx="5" fill="#1A1A2E"/>
+          <rect x="94" y="168" width="14" height="28" rx="5" fill="#1A1A2E"/>
+          <!-- Boots -->
+          <rect x="70" y="188" width="18" height="10" rx="4" fill="#2A2A3E"/>
+          <rect x="92" y="188" width="18" height="10" rx="4" fill="#2A2A3E"/>
+          <!-- Torso -->
+          <rect x="62" y="110" width="56" height="62" rx="12" fill="#C5993E"/>
+          <!-- Gold uniform top -->
+          <path d="M62 130 Q62 110 74 110 L106 110 Q118 110 118 130 L118 140 L62 140 Z" fill="#E8B84B"/>
+          <!-- Division stripe -->
+          <rect x="62" y="138" width="56" height="4" fill="#1A1A2E"/>
+          <!-- Badge -->
+          <polygon points="90,116 93,122 99,123 95,127 96,133 90,130 84,133 85,127 81,123 87,122" fill="#F5C842" opacity="0.9"/>
+          <!-- Arms -->
+          <rect x="44" y="114" width="18" height="40" rx="8" fill="#C5993E"/>
+          <rect x="118" y="114" width="18" height="40" rx="8" fill="#C5993E"/>
+          <!-- Hands -->
+          <circle cx="53" cy="158" r="8" fill="#F2D98C"/>
+          <circle cx="127" cy="158" r="8" fill="#F2D98C"/>
+          <!-- Neck -->
+          <rect x="82" y="98" width="16" height="16" rx="4" fill="#F2D98C"/>
+          <!-- Head -->
+          <ellipse cx="90" cy="68" rx="38" ry="40" fill="#F2D98C"/>
+          <!-- Hair -->
+          <path d="M52 65 Q52 28 90 28 Q128 28 128 65 L128 55 Q128 32 90 32 Q52 32 52 55 Z" fill="#2A2A2A"/>
+          <path d="M55 60 Q52 45 58 38 Q65 32 80 30 L75 35 Q62 40 58 55 Z" fill="#3A3A3A"/>
+          <!-- Eyes -->
+          <g class="data-eyes">
+            <ellipse cx="76" cy="66" rx="6" ry="7" fill="white"/>
+            <ellipse cx="104" cy="66" rx="6" ry="7" fill="white"/>
+            <circle cx="77" cy="66" r="3.5" fill="#C5993E">
+              <animate attributeName="cx" values="77;78;77;76;77" dur="4s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="105" cy="66" r="3.5" fill="#C5993E">
+              <animate attributeName="cx" values="105;106;105;104;105" dur="4s" repeatCount="indefinite"/>
+            </circle>
+            <!-- Pupils -->
+            <circle cx="77" cy="66" r="1.5" fill="#1A1A2E">
+              <animate attributeName="cx" values="77;78;77;76;77" dur="4s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="105" cy="66" r="1.5" fill="#1A1A2E">
+              <animate attributeName="cx" values="105;106;105;104;105" dur="4s" repeatCount="indefinite"/>
+            </circle>
+          </g>
+          <!-- Blink animation -->
+          <g class="blink-group">
+            <rect x="68" y="62" width="18" height="2" rx="1" fill="#F2D98C" opacity="0">
+              <animate attributeName="opacity" values="0;0;0;0;0;0;0;0;0;1;0" dur="4s" repeatCount="indefinite"/>
+              <animate attributeName="height" values="2;8;2" dur="0.15s" begin="3.6s" repeatCount="indefinite"/>
+            </rect>
+            <rect x="96" y="62" width="18" height="2" rx="1" fill="#F2D98C" opacity="0">
+              <animate attributeName="opacity" values="0;0;0;0;0;0;0;0;0;1;0" dur="4s" repeatCount="indefinite"/>
+              <animate attributeName="height" values="2;8;2" dur="0.15s" begin="3.6s" repeatCount="indefinite"/>
+            </rect>
+          </g>
+          <!-- Eyebrows -->
+          <line x1="70" y1="54" x2="82" y2="56" stroke="#2A2A2A" stroke-width="2" stroke-linecap="round"/>
+          <line x1="98" y1="56" x2="110" y2="54" stroke="#2A2A2A" stroke-width="2" stroke-linecap="round"/>
+          <!-- Nose -->
+          <path d="M88 74 L90 78 L92 74" fill="none" stroke="#D4B07A" stroke-width="1.5" stroke-linecap="round"/>
+          <!-- Mouth - slight smile -->
+          <path d="M82 86 Q90 92 98 86" fill="none" stroke="#D4A060" stroke-width="2" stroke-linecap="round"/>
+          <!-- Ears -->
+          <ellipse cx="52" cy="68" rx="5" ry="8" fill="#F2D98C"/>
+          <ellipse cx="128" cy="68" rx="5" ry="8" fill="#F2D98C"/>
+          <!-- Android skin detail - subtle shimmer lines on cheeks -->
+          <line x1="65" y1="74" x2="68" y2="78" stroke="#E8D090" stroke-width="0.5" opacity="0.4"/>
+          <line x1="112" y1="74" x2="115" y2="78" stroke="#E8D090" stroke-width="0.5" opacity="0.4"/>
+          <!-- Combadge glow -->
+          <circle cx="90" cy="124" r="6" fill="var(--gold)" opacity="0.2">
+            <animate attributeName="opacity" values="0.1;0.3;0.1" dur="2s" repeatCount="indefinite"/>
+          </circle>
+        </svg>
+      </div>
+      <div class="speech-bubble">
+        <div class="speaker">Lt. Cmdr. Data</div>
+        <p><strong>Welcome, Matthew.</strong> I am Data, your Chief of Staff AI. I operate as a persistent Telegram service on your Linux workstation, with full tool access and multi-agent coordination.</p>
+        <p>This walkthrough covers how I work, who's on the team, and what you've built so far. Based on your <strong>actual usage data</strong>, not hypotheticals.</p>
+        <p>Let's begin.<span class="typing-cursor"></span></p>
+      </div>
+    </div>
+
+    <!-- SLIDE 1: How to Talk to Me -->
+    <div class="slide" data-slide="1">
+      <div class="section-title"><span class="st-icon"><svg viewBox="0 0 24 24" fill="var(--gold)"><path d="M12 2L8 6H4v4l-4 2 4 2v4h4l4 4 4-4h4v-4l4-2-4-2V6h-4L12 2zm0 4l2.5 2.5H18v3.5l2 1-2 1V18h-3.5L12 20.5 9.5 18H6v-3.5l-2-1 2-1V9h3.5L12 6z"/><circle cx="12" cy="12" r="3"/></svg></span> How to Talk to Me</div>
+      <div class="speech-bubble">
+        <div class="speaker">Data</div>
+        <p>Send me a message on Telegram. That's it. No CLI, no web form. I run 24/7 on your ProBook.</p>
+        <p>But I'm not the only brain available. Use <code>@prefix</code> routing to hit different backends:</p>
+      </div>
+      <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto;">
+        <table class="route-table">
+          <thead>
+            <tr><th>Prefix</th><th>Backend</th><th>Best For</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>(none)</code></td><td>Claude Code (me)</td><td>Coding, analysis, execution</td></tr>
+            <tr><td><code>@gemini</code></td><td>Gemini 2.0 Flash</td><td>Fast general queries</td></tr>
+            <tr><td><code>@research</code></td><td>Perplexity Sonar</td><td>Web research, citations</td></tr>
+            <tr><td><code>@ollama</code></td><td>Ollama (local)</td><td>Private/offline queries</td></tr>
+            <tr><td><code>@gpt</code></td><td>OpenAI GPT</td><td>When available</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="coaching-callout fade-in">
+        <div class="callout-icon">&#9656;</div>
+        <div class="callout-text"><strong>Pro tip:</strong> Use <code>@research</code> for anything time-sensitive or requiring citations. Use me (default) for anything that needs tool access, code execution, or multi-step work.</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 2: The Agent Fleet -->
+    <div class="slide" data-slide="2">
+      <div class="section-title"><span class="st-icon"><svg viewBox="0 0 24 24" fill="var(--teal)"><path d="M12 2C6.48 2 2 6 2 10.5c0 2.5 1.5 5 3.5 6.5L4 22l4-2 4 2 4-2 4 2-1.5-5C20.5 15.5 22 13 22 10.5 22 6 17.52 2 12 2zm-4 12a2 2 0 110-4 2 2 0 010 4zm4 2a2 2 0 110-4 2 2 0 010 4zm4-2a2 2 0 110-4 2 2 0 010 4z"/></svg></span> The Agent Fleet</div>
+      <div class="speech-bubble">
+        <div class="speaker">Data</div>
+        <p>I coordinate a fleet of <strong>5 specialized workers</strong>. Each runs as an isolated subprocess with its own CLAUDE.md personality. I route tasks to them through a SQLite dispatch queue.</p>
+      </div>
+      <div class="fleet-grid">
+        <div class="worker-card fade-in" style="border-top-color: var(--gold);">
+          <div class="worker-icon"><svg viewBox="0 0 36 36" fill="var(--gold)"><path d="M18 4l-4 4h-4v4l-4 4 4 4v4h4l4 4 4-4h4v-4l4-4-4-4V8h-4l-4-4zm0 8a6 6 0 110 12 6 6 0 010-12z"/><circle cx="18" cy="18" r="3" fill="var(--bg)"/></svg></div>
+          <div class="worker-name">Default</div>
+          <div class="worker-role">General purpose</div>
+          <div class="worker-stat good">7/7 completed</div>
+        </div>
+        <div class="worker-card fade-in" style="border-top-color: var(--purple);">
+          <div class="worker-icon"><svg viewBox="0 0 36 36" fill="var(--purple)"><path d="M6 8h24v4H6V8zm2 6h20v2H8v-2zm4 4h12v2H12v-2z"/><circle cx="12" cy="26" r="3"/><circle cx="24" cy="26" r="3"/><path d="M15 25h6v2h-6v-2z"/></svg></div>
+          <div class="worker-name">Soundwave</div>
+          <div class="worker-role">Research & analysis</div>
+          <div class="worker-stat bad">7/15 completed (47% fail)</div>
+        </div>
+        <div class="worker-card fade-in" style="border-top-color: var(--accent);">
+          <div class="worker-icon"><svg viewBox="0 0 36 36" fill="var(--accent)"><path d="M18 4l3 7h7l-5.5 4.5L24 23l-6-4.5L12 23l1.5-7.5L8 11h7l3-7z"/></svg></div>
+          <div class="worker-name">Starscream</div>
+          <div class="worker-role">Social media</div>
+          <div class="worker-stat good">5/5 completed</div>
+        </div>
+        <div class="worker-card fade-in" style="border-top-color: var(--teal);">
+          <div class="worker-icon"><svg viewBox="0 0 36 36" fill="var(--teal)"><path d="M6 8l4-2h16l4 2v6l-2 4-2-2V10H10v6l-2 2-2-4V8z"/><path d="M10 18h16v2H10v-2zm2 4h12v2H12v-2zm4 4h4v4h-4v-4z"/></svg></div>
+          <div class="worker-name">Ravage</div>
+          <div class="worker-role">Coding agent</div>
+          <div class="worker-stat good">14/14 completed</div>
+        </div>
+        <div class="worker-card fade-in" style="border-top-color: var(--lcars-blue);">
+          <div class="worker-icon"><svg viewBox="0 0 36 36" fill="var(--lcars-blue)"><path d="M8 22l10-16 10 16H8zm10-12L12 20h12L18 10z"/><rect x="14" y="24" width="8" height="3" rx="1"/><rect x="16" y="28" width="4" height="4" rx="1"/></svg></div>
+          <div class="worker-name">AstroTrain</div>
+          <div class="worker-role">DSP / SCM simulation</div>
+          <div class="worker-stat warn">1/2 completed</div>
+        </div>
+      </div>
+      <div class="coaching-callout fade-in">
+        <div class="callout-icon">&#9888;</div>
+        <div class="callout-text"><strong>Soundwave needs attention.</strong> 47% failure rate across 15 dispatches. Research tasks are hitting rate limits or timing out. The other workers are solid -- Ravage is a machine at 14/14. AstroTrain is barely used (2 tasks total).</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 3: Memory System -->
+    <div class="slide" data-slide="3">
+      <div class="section-title"><span class="st-icon"><svg viewBox="0 0 24 24" fill="var(--purple)"><path d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6zm-3-7a3 3 0 110 6 3 3 0 010-6z"/><path d="M7 7h0m10 0h0M7 17h0m10 0h0" stroke="var(--bg)" stroke-width="1.5" stroke-linecap="round"/></svg></span> Memory System</div>
+      <div class="speech-bubble">
+        <div class="speaker">Data</div>
+        <p>I retain context between conversations through a <strong>memory system</strong> with full-text search. Memories are tagged by sector and scored by salience (0-5). Higher salience = more likely to surface in future conversations.</p>
+      </div>
+      <div class="card-grid">
+        <div class="info-card gold fade-in">
+          <div class="card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="var(--gold)"><path d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6z"/></svg></div>
+          <div class="card-title">13 Memories</div>
+          <div class="card-desc">Stored across 2 sectors</div>
+        </div>
+        <div class="info-card teal fade-in">
+          <div class="card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="var(--teal)"><path d="M12 4v16m-6-8l6-6 6 6" stroke="var(--teal)" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="10" stroke="var(--teal)" stroke-width="1.5" fill="none"/></svg></div>
+          <div class="card-title">8 Episodic</div>
+          <div class="card-desc">What happened, decisions made, context from sessions</div>
+        </div>
+        <div class="info-card purple fade-in">
+          <div class="card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="var(--purple)"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4.5L6 21l1.5-7.5L2 9h7l3-7z"/></svg></div>
+          <div class="card-title">5 Semantic</div>
+          <div class="card-desc">Facts, preferences, learned patterns about you</div>
+        </div>
+        <div class="info-card green fade-in">
+          <div class="card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><circle cx="10" cy="10" r="7"/><line x1="15" y1="15" x2="21" y2="21"/></svg></div>
+          <div class="card-title">FTS5 Search</div>
+          <div class="card-desc">Full-text search with auto-updating index</div>
+        </div>
+      </div>
+      <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 4px;">
+        <div class="stat-row">
+          <div class="stat-label">Episodic</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill teal" style="width: 62%"></div></div>
+          <div class="stat-value">8</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Semantic</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill purple" style="width: 38%"></div></div>
+          <div class="stat-value">5</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Learned Patterns</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill gold" style="width: 15%"></div></div>
+          <div class="stat-value">2</div>
+        </div>
+      </div>
+      <div class="coaching-callout fade-in">
+        <div class="callout-icon">&#9656;</div>
+        <div class="callout-text"><strong>Use <code>checkpoint</code></strong> before ending a session to save key decisions as high-salience memories. Right now only 2 task patterns have been learned -- the system gets smarter with more usage.</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 4: Christensen Filter -->
+    <div class="slide" data-slide="4">
+      <div class="section-title"><span class="st-icon"><svg viewBox="0 0 24 24" fill="var(--accent)"><path d="M12 2L3 7v6c0 5.25 3.83 10.15 9 11.35C17.17 23.15 21 18.25 21 13V7L12 2zm0 3l6 3.5v4.5c0 3.75-2.7 7.25-6 8.15-3.3-.9-6-4.4-6-8.15V8.5L12 5z"/><path d="M11 10h2v5h-2v-5zm0 6h2v2h-2v-2z" fill="var(--bg)"/></svg></span> The Christensen Filter</div>
+      <div class="speech-bubble">
+        <div class="speaker">Data</div>
+        <p>You're an ENTP. Ideas are unlimited. Execution bandwidth is not. When you say "we should build X," I run the <strong>Christensen filter</strong> before executing. Three gate questions:</p>
+      </div>
+      <div class="filter-gate">
+        <div class="gate-question fade-in">
+          <div class="gate-number">1</div>
+          <div class="gate-text"><strong>"What job does this hire for?"</strong> -- Who has the problem, and what are they trying to accomplish?</div>
+        </div>
+        <div class="gate-question fade-in">
+          <div class="gate-number">2</div>
+          <div class="gate-text"><strong>"Does this serve M2AI brand and revenue?"</strong> -- Does it build reputation, generate income, or strengthen the consulting practice?</div>
+        </div>
+        <div class="gate-question fade-in">
+          <div class="gate-number">3</div>
+          <div class="gate-text"><strong>"Is this the beachhead or a distraction?"</strong> -- Does this advance the chosen domain or scatter focus?</div>
+        </div>
+      </div>
+      <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px;">
+        <div class="section-title" style="font-size: 14px; margin-bottom: 12px;"><span class="st-icon"><svg viewBox="0 0 24 24" fill="var(--gold)" width="18" height="18"><path d="M3 3v18h18v-2H5V3H3zm4 10h3v6H7v-6zm5-4h3v10h-3V9zm5-4h3v14h-3V5z"/></svg></span> Your Filter Results</div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+          <div class="big-stat">
+            <div class="number" style="-webkit-text-fill-color: var(--red);">3</div>
+            <div class="label">Failed</div>
+          </div>
+          <div class="big-stat">
+            <div class="number" style="-webkit-text-fill-color: var(--gold);">1</div>
+            <div class="label">Override</div>
+          </div>
+          <div class="big-stat">
+            <div class="number" style="-webkit-text-fill-color: var(--green);">0</div>
+            <div class="label">Passed</div>
+          </div>
+        </div>
+      </div>
+      <div class="coaching-callout fade-in">
+        <div class="callout-icon">&#9670;</div>
+        <div class="callout-text"><strong>The filter is working.</strong> 3 ideas killed before they ate your bandwidth. 1 override (you said "just build it" -- your call). Zero clean passes so far, which means the ideas tested haven't aligned with beachhead strategy yet. That's the filter doing its job.</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 5: The Dashboard -->
+    <div class="slide" data-slide="5">
+      <div class="section-title"><span class="st-icon"><svg viewBox="0 0 24 24" fill="var(--lcars-blue)"><path d="M3 3h18v12H3V3zm2 2v8h14V5H5zm-1 12h16v2H4v-2zm3 3h10v1H7v-1z"/><path d="M7 7h4v2H7V7zm6 0h4v1h-4V7zm0 2h4v1h-4V9zm-6 3h10v1H7v-1z" fill="var(--bg)" opacity="0.5"/></svg></span> The Command Center</div>
+      <div class="speech-bubble">
+        <div class="speaker">Data</div>
+        <p>The <strong>EAC Command Center</strong> is a live dashboard at <code>10.0.0.46:8080</code>. It auto-refreshes from SQLite every 5-30 seconds. Five tabs, each covering a different operational domain:</p>
+      </div>
+      <div class="card-grid">
+        <div class="info-card gold fade-in">
+          <div class="card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="var(--gold)"><path d="M12 2L8 6H4v4l-4 4 4 4v4h4l4 4 4-4h4v-4l4-4-4-4V6h-4L12 2z"/><circle cx="12" cy="12" r="3" fill="var(--bg)"/></svg></div>
+          <div class="card-title">Agents</div>
+          <div class="card-desc">Fleet status, PM2 processes, dispatch queue, scheduled tasks. The ops view.</div>
+        </div>
+        <div class="info-card teal fade-in">
+          <div class="card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="var(--teal)"><path d="M13 3L4 14h7l-2 7 9-11h-7l2-7z"/></svg></div>
+          <div class="card-title">Operations</div>
+          <div class="card-desc">Today's work order, service health, pipeline status, blockers/risks.</div>
+        </div>
+        <div class="info-card purple fade-in">
+          <div class="card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="var(--purple)"><path d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6z"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <div class="card-title">Soundwave / HLL</div>
+          <div class="card-desc">Memory stats, extraction coverage, learning queue, recent memories.</div>
+        </div>
+        <div class="info-card accent fade-in">
+          <div class="card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="var(--accent)"><path d="M12 2L3 7v6c0 5.25 3.83 10.15 9 11.35C17.17 23.15 21 18.25 21 13V7L12 2z"/><path d="M11 10h2v5h-2zm0 6h2v2h-2z" fill="var(--bg)"/></svg></div>
+          <div class="card-title">Strategy</div>
+          <div class="card-desc">Christensen filter log, pass/fail/override history, IdeaForge pipeline.</div>
+        </div>
+        <div class="info-card lcars-blue fade-in">
+          <div class="card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="var(--lcars-blue)"><path d="M3 4h5v3H3V4zm7 0h11v1H10V4zM3 9h5v3H3V9zm7 0h11v1H10V9zM3 14h5v3H3v-3zm7 0h11v1H10v-1zM3 19h5v3H3v-3zm7 0h11v1H10v-1z"/></svg></div>
+          <div class="card-title">Pipeline</div>
+          <div class="card-desc">Swim lanes: Active, Queued, Research, Shelved, Killed. Effort tracking.</div>
+        </div>
+      </div>
+      <div class="coaching-callout fade-in">
+        <div class="callout-icon">&#9656;</div>
+        <div class="callout-text">The dashboard pulls from <code>reports/latest.json</code>, generated by a Python script that queries all project databases, PM2, git status, systemd, and cron. Report generation runs on scheduled tasks (0800 and 1600) plus periodic cron.</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 6: Pipeline & Scheduling -->
+    <div class="slide" data-slide="6">
+      <div class="section-title"><span class="st-icon"><svg viewBox="0 0 24 24" fill="var(--green)"><path d="M3 4h5v3H3V4zm7 0h11v1H10V4zm0 2h8v1h-8V6zM3 9h5v3H3V9zm7 0h11v1H10V9zm0 2h8v1h-8v-1zM3 14h5v3H3v-3zm7 0h11v1H10v-1zm0 2h8v1h-8v-1zM3 19h5v3H3v-3zm7 0h11v1H10v-1zm0 2h8v1h-8v-1z"/></svg></span> Pipeline & Scheduling</div>
+      <div class="speech-bubble">
+        <div class="speaker">Data</div>
+        <p>Work items flow through a pipeline with 6 states. I also run <strong>3 active scheduled tasks</strong> on cron patterns. You can create new scheduled tasks by telling me what to run and when.</p>
+      </div>
+      <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px;">
+        <div class="section-title" style="font-size: 14px; margin-bottom: 12px;">Pipeline Breakdown</div>
+        <div class="stat-row">
+          <div class="stat-label">Completed</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill green" style="width: 54%"></div></div>
+          <div class="stat-value">19</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Queued</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill teal" style="width: 14%"></div></div>
+          <div class="stat-value">5</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Research</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill purple" style="width: 11%"></div></div>
+          <div class="stat-value">4</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Active</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill gold" style="width: 3%"></div></div>
+          <div class="stat-value">1</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Shelved</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill" style="width: 9%; background: var(--text-dim);"></div></div>
+          <div class="stat-value">3</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Killed</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill red" style="width: 9%"></div></div>
+          <div class="stat-value">3</div>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+        <div class="big-stat fade-in">
+          <div class="number">35</div>
+          <div class="label">Total Items</div>
+        </div>
+        <div class="big-stat fade-in">
+          <div class="number" style="-webkit-text-fill-color: var(--green);">54%</div>
+          <div class="label">Completion Rate</div>
+        </div>
+        <div class="big-stat fade-in">
+          <div class="number" style="-webkit-text-fill-color: var(--teal);">3</div>
+          <div class="label">Scheduled Tasks</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 7: Commands & Tools -->
+    <div class="slide" data-slide="7">
+      <div class="section-title"><span class="st-icon"><svg viewBox="0 0 24 24" fill="var(--lcars-magenta)"><path d="M2 5h20v14H2V5zm2 2v10h16V7H4zm2 2h2v2H6V9zm3 0h2v2H9V9zm3 0h2v2h-2V9zm3 0h2v2h-2V9zm-9 3h2v2H6v-2zm3 0h6v2H9v-2zm7 0h2v2h-2v-2z"/></svg></span> Commands & Tools</div>
+      <div class="speech-bubble">
+        <div class="speaker">Data</div>
+        <p>Beyond natural language, a few <strong>special commands</strong> give you quick access to system state:</p>
+      </div>
+      <div class="command-list">
+        <div class="command-item fade-in">
+          <code>convolife</code>
+          <div class="cmd-desc">Check remaining context window -- shows tokens used, turns, cost, compactions. Also available as <code>/convolife</code> in Telegram.</div>
+        </div>
+        <div class="command-item fade-in">
+          <code>checkpoint</code>
+          <div class="cmd-desc">Save a session summary to memory (salience 5.0) before starting a new chat. Preserves key decisions and state.</div>
+        </div>
+        <div class="command-item fade-in">
+          <code>@research ...</code>
+          <div class="cmd-desc">Route a query to Perplexity Sonar for web research with citations. Good for current events and market data.</div>
+        </div>
+        <div class="command-item fade-in">
+          <code>@ollama ...</code>
+          <div class="cmd-desc">Route to local Ollama for private queries. Nothing leaves the machine. Uses qwen2.5:7b-instruct.</div>
+        </div>
+      </div>
+      <div class="coaching-callout fade-in" style="margin-top: 8px;">
+        <div class="callout-icon">&#9656;</div>
+        <div class="callout-text"><strong>Arcade MCP tools</strong> are also available -- I can interact with <strong>Linear</strong> (issues, projects, cycles), <strong>GitHub</strong> (PRs, repos, reviews), and <strong>Slack</strong> (messages, channels) directly from Telegram. Just ask.</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 8: Your Stats -->
+    <div class="slide" data-slide="8">
+      <div class="section-title"><span class="st-icon"><svg viewBox="0 0 24 24" fill="var(--gold)"><path d="M3 3v18h18v-2H5V3H3zm4 10h3v6H7v-6zm5-4h3v10h-3V9zm5-4h3v14h-3V5z"/></svg></span> Your System at a Glance</div>
+      <div class="speech-bubble">
+        <div class="speaker">Data</div>
+        <p>Here's where things stand right now. Real numbers from your database, not projections.</p>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+        <div class="big-stat fade-in">
+          <div class="number">$101</div>
+          <div class="label">Total Spend</div>
+        </div>
+        <div class="big-stat fade-in">
+          <div class="number">43</div>
+          <div class="label">Tasks Dispatched</div>
+        </div>
+        <div class="big-stat fade-in">
+          <div class="number">8</div>
+          <div class="label">Compactions</div>
+        </div>
+        <div class="big-stat fade-in">
+          <div class="number">13</div>
+          <div class="label">Memories</div>
+        </div>
+      </div>
+      <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px;">
+        <div class="section-title" style="font-size: 14px; margin-bottom: 12px;">Worker Reliability</div>
+        <div class="stat-row">
+          <div class="stat-label">Ravage</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill green" style="width: 100%"></div></div>
+          <div class="stat-value" style="color: var(--green);">100%</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Default</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill green" style="width: 100%"></div></div>
+          <div class="stat-value" style="color: var(--green);">100%</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Starscream</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill green" style="width: 100%"></div></div>
+          <div class="stat-value" style="color: var(--green);">100%</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">AstroTrain</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill gold" style="width: 50%"></div></div>
+          <div class="stat-value" style="color: var(--gold);">50%</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label">Soundwave</div>
+          <div class="stat-bar-track"><div class="stat-bar-fill red" style="width: 47%"></div></div>
+          <div class="stat-value" style="color: var(--red);">47%</div>
+        </div>
+      </div>
+      <div class="coaching-callout fade-in">
+        <div class="callout-icon">&#9670;</div>
+        <div class="callout-text">
+          <strong>Coaching notes:</strong><br>
+          1. <strong>Soundwave's 47% failure rate</strong> is the biggest gap. Investigate whether it's rate limits, prompt quality, or timeout issues.<br>
+          2. <strong>AstroTrain is underused</strong> -- only 2 tasks ever dispatched. If supply chain simulation isn't on your roadmap, consider repurposing this worker slot.<br>
+          3. <strong>8 compactions in 3 sessions</strong> means you're hitting context limits. Use <code>checkpoint</code> more aggressively to preserve state before compaction strips it.<br>
+          4. <strong>2 learned patterns</strong> is low -- the system gets smarter with repetition. Keep dispatching similar tasks to build the pattern library.
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 9: Wrap -->
+    <div class="slide" data-slide="9">
+      <div class="character-stage">
+        <svg class="data-character" viewBox="0 0 180 220" xmlns="http://www.w3.org/2000/svg">
+          <!-- Same Data character, waving -->
+          <ellipse cx="90" cy="190" rx="35" ry="8" fill="rgba(245,200,66,0.1)"/>
+          <rect x="72" y="168" width="14" height="28" rx="5" fill="#1A1A2E"/>
+          <rect x="94" y="168" width="14" height="28" rx="5" fill="#1A1A2E"/>
+          <rect x="70" y="188" width="18" height="10" rx="4" fill="#2A2A3E"/>
+          <rect x="92" y="188" width="18" height="10" rx="4" fill="#2A2A3E"/>
+          <rect x="62" y="110" width="56" height="62" rx="12" fill="#C5993E"/>
+          <path d="M62 130 Q62 110 74 110 L106 110 Q118 110 118 130 L118 140 L62 140 Z" fill="#E8B84B"/>
+          <rect x="62" y="138" width="56" height="4" fill="#1A1A2E"/>
+          <polygon points="90,116 93,122 99,123 95,127 96,133 90,130 84,133 85,127 81,123 87,122" fill="#F5C842" opacity="0.9"/>
+          <rect x="44" y="114" width="18" height="40" rx="8" fill="#C5993E"/>
+          <!-- Right arm raised (waving) -->
+          <rect x="118" y="90" width="18" height="40" rx="8" fill="#C5993E" transform="rotate(-30, 127, 110)">
+            <animateTransform attributeName="transform" type="rotate" values="-30,127,110;-20,127,110;-30,127,110" dur="0.6s" repeatCount="indefinite"/>
+          </rect>
+          <circle cx="53" cy="158" r="8" fill="#F2D98C"/>
+          <!-- Waving hand -->
+          <circle cx="145" cy="88" r="8" fill="#F2D98C">
+            <animate attributeName="cx" values="145;148;145" dur="0.6s" repeatCount="indefinite"/>
+            <animate attributeName="cy" values="88;85;88" dur="0.6s" repeatCount="indefinite"/>
+          </circle>
+          <rect x="82" y="98" width="16" height="16" rx="4" fill="#F2D98C"/>
+          <ellipse cx="90" cy="68" rx="38" ry="40" fill="#F2D98C"/>
+          <path d="M52 65 Q52 28 90 28 Q128 28 128 65 L128 55 Q128 32 90 32 Q52 32 52 55 Z" fill="#2A2A2A"/>
+          <path d="M55 60 Q52 45 58 38 Q65 32 80 30 L75 35 Q62 40 58 55 Z" fill="#3A3A3A"/>
+          <ellipse cx="76" cy="66" rx="6" ry="7" fill="white"/>
+          <ellipse cx="104" cy="66" rx="6" ry="7" fill="white"/>
+          <circle cx="77" cy="66" r="3.5" fill="#C5993E"/>
+          <circle cx="105" cy="66" r="3.5" fill="#C5993E"/>
+          <circle cx="77" cy="66" r="1.5" fill="#1A1A2E"/>
+          <circle cx="105" cy="66" r="1.5" fill="#1A1A2E"/>
+          <line x1="70" y1="54" x2="82" y2="56" stroke="#2A2A2A" stroke-width="2" stroke-linecap="round"/>
+          <line x1="98" y1="56" x2="110" y2="54" stroke="#2A2A2A" stroke-width="2" stroke-linecap="round"/>
+          <path d="M88 74 L90 78 L92 74" fill="none" stroke="#D4B07A" stroke-width="1.5" stroke-linecap="round"/>
+          <!-- Bigger smile -->
+          <path d="M80 84 Q90 94 100 84" fill="none" stroke="#D4A060" stroke-width="2" stroke-linecap="round"/>
+          <ellipse cx="52" cy="68" rx="5" ry="8" fill="#F2D98C"/>
+          <ellipse cx="128" cy="68" rx="5" ry="8" fill="#F2D98C"/>
+          <circle cx="90" cy="124" r="6" fill="var(--gold)" opacity="0.2">
+            <animate attributeName="opacity" values="0.1;0.3;0.1" dur="2s" repeatCount="indefinite"/>
+          </circle>
+        </svg>
+      </div>
+      <div class="speech-bubble">
+        <div class="speaker">Data</div>
+        <p>That covers the core system. To recap:</p>
+        <p><strong>Talk to me on Telegram.</strong> Route to other LLMs with <code>@prefix</code>. I dispatch to specialized workers. The Christensen filter guards your execution bandwidth. The Command Center shows everything in real time.</p>
+        <p>Your dashboard is at <strong>10.0.0.46:8080</strong>. Send me a message anytime.</p>
+      </div>
+      <div style="display: flex; gap: 12px; justify-content: center; margin-top: 8px;">
+        <a href="/index.html" class="nav-btn primary" style="text-decoration: none;">Open Command Center</a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Navigation -->
+  <div class="slide-nav">
+    <button class="nav-btn" id="prevBtn" onclick="prevSlide()" disabled>&larr; Previous</button>
+    <span class="slide-counter" id="slideCounter">1 / 10</span>
+    <button class="nav-btn primary" id="nextBtn" onclick="nextSlide()">Next &rarr;</button>
+  </div>
+
+</div>
+
+<script>
+  // ── Starfield generator ──
+  (function() {
+    const field = document.getElementById('starfield');
+    const count = 80;
+    for (let i = 0; i < count; i++) {
+      const star = document.createElement('div');
+      star.className = 'star';
+      const size = Math.random() * 2 + 1;
+      star.style.width = size + 'px';
+      star.style.height = size + 'px';
+      star.style.left = Math.random() * 100 + '%';
+      star.style.top = Math.random() * 100 + '%';
+      star.style.setProperty('--dur', (Math.random() * 3 + 2) + 's');
+      star.style.setProperty('--min-o', (Math.random() * 0.2 + 0.1).toFixed(2));
+      star.style.setProperty('--max-o', (Math.random() * 0.5 + 0.4).toFixed(2));
+      field.appendChild(star);
+    }
+  })();
+
+  // ── Slideshow logic ──
+  const totalSlides = document.querySelectorAll('.slide').length;
+  let currentSlide = 0;
+
+  function renderProgressBar() {
+    const bar = document.getElementById('progressBar');
+    bar.innerHTML = '';
+    for (let i = 0; i < totalSlides; i++) {
+      const seg = document.createElement('div');
+      seg.className = 'progress-segment';
+      if (i < currentSlide) seg.classList.add('visited');
+      if (i === currentSlide) seg.classList.add('active');
+      seg.style.cursor = 'pointer';
+      seg.addEventListener('click', () => goToSlide(i));
+      bar.appendChild(seg);
+    }
+  }
+
+  function goToSlide(n) {
+    if (n < 0 || n >= totalSlides) return;
+    document.querySelectorAll('.slide').forEach(s => s.classList.remove('active'));
+    currentSlide = n;
+    const slide = document.querySelector(`[data-slide="${n}"]`);
+    slide.classList.add('active');
+
+    // Re-trigger fade-in animations
+    slide.querySelectorAll('.fade-in').forEach(el => {
+      el.style.animation = 'none';
+      el.offsetHeight; // force reflow
+      el.style.animation = '';
+    });
+
+    renderProgressBar();
+    document.getElementById('slideCounter').textContent = `${n + 1} / ${totalSlides}`;
+    document.getElementById('prevBtn').disabled = (n === 0);
+
+    const nextBtn = document.getElementById('nextBtn');
+    if (n === totalSlides - 1) {
+      nextBtn.style.display = 'none';
+    } else {
+      nextBtn.style.display = '';
+    }
+  }
+
+  function nextSlide() { goToSlide(currentSlide + 1); }
+  function prevSlide() { goToSlide(currentSlide - 1); }
+
+  // Keyboard nav
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prevSlide(); }
+  });
+
+  // Swipe support for tablet
+  let touchStartX = 0;
+  document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    const diff = touchStartX - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) nextSlide();
+      else prevSlide();
+    }
+  });
+
+  // Initialize
+  goToSlide(0);
+</script>
+
+</body>
+</html>

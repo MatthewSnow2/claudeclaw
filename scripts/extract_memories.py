@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Semantic Memory Extraction -- Phase 7b
+Semantic Memory Extraction -- Phase 7c (Structured Metadata)
 Extracts structured facts from conversation logs via Qwen (local Ollama),
 embeds them via nomic-embed-text, and stores in memory_vectors table.
 
@@ -23,7 +23,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 # Paths
 STORE_DIR = Path("/home/apexaipc/projects/claudeclaw/store")
@@ -39,16 +39,37 @@ EMBEDDING_DIMS = 768
 BATCH_SIZE = 20  # conversation_log rows per batch
 MAX_FACTS_PER_BATCH = 20  # safety cap on extracted facts
 
-EXTRACTION_PROMPT = """Extract important facts from this conversation. Output a JSON array of strings.
-Focus on: decisions made, user preferences, project state changes, action items, technical details, names/dates/numbers.
-Each fact must be self-contained (understandable without conversation context).
-Keep facts concise -- one sentence each.
+# Valid categories for structured extraction
+VALID_CATEGORIES = {
+    "decision", "preference", "project_state", "action_item",
+    "technical_detail", "person_info", "insight",
+}
+
+EXTRACTION_PROMPT = """Extract important facts from this conversation. Output a JSON array of objects.
+
+Each object must have exactly these fields:
+- "content": string (one self-contained sentence)
+- "category": one of: decision, preference, project_state, action_item, technical_detail, person_info, insight
+- "tags": array of 1-3 short topic strings
+- "people": array of person names mentioned ([] if none)
+- "is_action_item": true or false
+- "confidence": number from 0.1 to 1.0
+
+Example output:
+[
+  {{"content": "Matthew decided to use Railway for deployment instead of Vercel", "category": "decision", "tags": ["deployment", "railway"], "people": ["Matthew"], "is_action_item": false, "confidence": 0.9}},
+  {{"content": "Need to update the CI pipeline to run mypy before pytest", "category": "action_item", "tags": ["ci", "testing"], "people": [], "is_action_item": true, "confidence": 0.8}}
+]
+
 Return [] if nothing worth remembering.
 
 Conversation:
 {conversation}"""
 
 DRY_RUN = "--dry-run" in sys.argv
+
+# Parse failure tracking
+_parse_failures = 0
 
 
 def log(msg: str) -> None:
@@ -72,7 +93,7 @@ def call_qwen(prompt: str) -> Optional[str]:
         "model": EXTRACTION_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "options": {"temperature": 0.1, "num_predict": 1024},
+        "options": {"temperature": 0.1, "num_predict": 2048},
     }).encode("utf-8")
 
     req = urllib.request.Request(
@@ -119,28 +140,90 @@ def embed_text(text: str) -> Optional[bytes]:
         return None
 
 
-def parse_facts(raw: str) -> list[str]:
-    """Parse JSON array of fact strings from Qwen response. Robust against markdown fences."""
-    text = raw.strip()
+def _normalize_memory_object(obj: Any) -> Optional[dict]:
+    """Validate and normalize a single memory object from Qwen output.
+    Returns a normalized dict or None if invalid."""
+    # Handle plain string fallback (backward compatibility)
+    if isinstance(obj, str):
+        text = obj.strip()
+        if not text:
+            return None
+        return {
+            "content": text,
+            "category": "insight",
+            "tags": [],
+            "people": [],
+            "is_action_item": False,
+            "confidence": 0.8,
+        }
+
+    if not isinstance(obj, dict):
+        return None
+
+    content = obj.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return None
+
+    # Normalize category
+    category = obj.get("category", "insight")
+    if not isinstance(category, str) or category not in VALID_CATEGORIES:
+        category = "insight"
+
+    # Normalize tags (cap at 5)
+    tags = obj.get("tags", [])
+    if not isinstance(tags, list):
+        tags = []
+    tags = [str(t).strip() for t in tags if isinstance(t, str) and str(t).strip()][:5]
+
+    # Normalize people
+    people = obj.get("people", [])
+    if not isinstance(people, list):
+        people = []
+    people = [str(p).strip() for p in people if isinstance(p, str) and str(p).strip()]
+
+    # Normalize is_action_item
+    is_action_item = bool(obj.get("is_action_item", False))
+
+    # Normalize confidence (clamp 0.0-1.0)
+    confidence = obj.get("confidence", 1.0)
+    try:
+        confidence = float(confidence)
+    except (TypeError, ValueError):
+        confidence = 1.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    return {
+        "content": content.strip(),
+        "category": category,
+        "tags": tags,
+        "people": people,
+        "is_action_item": is_action_item,
+        "confidence": confidence,
+    }
+
+
+def _extract_json_array(text: str) -> Optional[list]:
+    """Try to extract a JSON array from text, handling markdown fences and partial JSON."""
+    text = text.strip()
 
     # Strip markdown code fences if present
     if text.startswith("```"):
         lines = text.split("\n")
-        # Remove first line (```json or ```) and last line (```)
         lines = [l for l in lines if not l.strip().startswith("```")]
         text = "\n".join(lines).strip()
 
+    # Direct parse
     try:
         parsed = json.loads(text)
         if isinstance(parsed, list):
             # Handle nested arrays: [[...]] -> [...]
             if parsed and isinstance(parsed[0], list):
                 parsed = parsed[0]
-            return [str(f).strip() for f in parsed if isinstance(f, str) and f.strip()][:MAX_FACTS_PER_BATCH]
+            return parsed
     except json.JSONDecodeError:
         pass
 
-    # Fallback: try to find JSON array within the text
+    # Fallback: find JSON array within text
     start = text.find("[")
     end = text.rfind("]")
     if start >= 0 and end > start:
@@ -149,12 +232,57 @@ def parse_facts(raw: str) -> list[str]:
             if isinstance(parsed, list):
                 if parsed and isinstance(parsed[0], list):
                     parsed = parsed[0]
-                return [str(f).strip() for f in parsed if isinstance(f, str) and f.strip()][:MAX_FACTS_PER_BATCH]
+                return parsed
         except json.JSONDecodeError:
             pass
 
-    log(f"Failed to parse facts from Qwen response: {text[:200]}")
-    return []
+    return None
+
+
+def parse_memory_objects(raw: str) -> list[dict]:
+    """Parse JSON array of memory objects from Qwen response.
+    Handles structured objects, plain strings (backward compat), markdown fences, and partial JSON."""
+    global _parse_failures
+
+    parsed = _extract_json_array(raw)
+    if parsed is None:
+        _parse_failures += 1
+        log(f"Failed to parse memory objects from Qwen response (failures: {_parse_failures}): {raw[:200]}")
+        return []
+
+    results = []
+    for item in parsed:
+        normalized = _normalize_memory_object(item)
+        if normalized:
+            results.append(normalized)
+        if len(results) >= MAX_FACTS_PER_BATCH:
+            break
+
+    return results
+
+
+def ensure_schema(conn: sqlite3.Connection) -> None:
+    """Ensure memory_vectors has metadata columns. Safety net for when cron fires before bot restart."""
+    cursor = conn.execute("PRAGMA table_info('memory_vectors')")
+    existing = {row[1] for row in cursor.fetchall()}
+
+    additions = [
+        ("category", "TEXT"),
+        ("tags", "TEXT"),
+        ("people", "TEXT"),
+        ("is_action_item", "INTEGER NOT NULL DEFAULT 0"),
+        ("confidence", "REAL NOT NULL DEFAULT 1.0"),
+    ]
+
+    for col, typedef in additions:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE memory_vectors ADD COLUMN {col} {typedef}")
+            log(f"  Migration: added column {col} to memory_vectors")
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memvec_category ON memory_vectors(chat_id, category)"
+    )
+    conn.commit()
 
 
 # Patterns that indicate tool-echo spam or bot noise (mirrors bot.ts isToolEcho)
@@ -219,6 +347,9 @@ def run_extraction():
     conn.execute("PRAGMA busy_timeout = 5000")
 
     try:
+        # Ensure schema has metadata columns (safety net)
+        ensure_schema(conn)
+
         # Get all chat_ids that have conversation_log entries
         chat_ids = [
             row["chat_id"]
@@ -277,10 +408,10 @@ def run_extraction():
                 prompt = EXTRACTION_PROMPT.format(conversation=conversation_text)
                 raw_response = call_qwen(prompt)
                 if raw_response:
-                    facts = parse_facts(raw_response)
-                    log(f"[DRY RUN] Extracted {len(facts)} facts:")
-                    for f in facts:
-                        log(f"  - {f}")
+                    memory_objects = parse_memory_objects(raw_response)
+                    log(f"[DRY RUN] Extracted {len(memory_objects)} structured facts:")
+                    for mo in memory_objects:
+                        log(f"  - [{mo['category']}] {mo['content']} (conf={mo['confidence']}, tags={mo['tags']})")
                 continue
 
             # Call Qwen for extraction
@@ -291,25 +422,38 @@ def run_extraction():
                 log(f"Qwen extraction failed for chat {chat_id}, skipping batch")
                 continue
 
-            facts = parse_facts(raw_response)
-            log(f"Extracted {len(facts)} facts from chat {chat_id}")
+            memory_objects = parse_memory_objects(raw_response)
+            log(f"Extracted {len(memory_objects)} structured facts from chat {chat_id}")
 
             # Embed and store each fact
             source_ids = ",".join(str(r["id"]) for r in rows_as_dicts)
             stored = 0
 
-            for fact in facts:
-                embedding = embed_text(fact)
+            for mo in memory_objects:
+                embedding = embed_text(mo["content"])
                 if embedding is None:
-                    log(f"  Embedding failed for fact: {fact[:80]}")
+                    log(f"  Embedding failed for fact: {mo['content'][:80]}")
                     continue
 
                 now = int(time.time())
                 conn.execute(
                     """INSERT INTO memory_vectors
-                       (chat_id, content, source_type, embedding, salience, created_at, accessed_at, source_log_ids)
-                       VALUES (?, ?, 'extraction', ?, 1.0, ?, ?, ?)""",
-                    (chat_id, fact, embedding, now, now, source_ids),
+                       (chat_id, content, source_type, embedding, salience, created_at, accessed_at, source_log_ids,
+                        category, tags, people, is_action_item, confidence)
+                       VALUES (?, ?, 'extraction', ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        chat_id,
+                        mo["content"],
+                        embedding,
+                        now,
+                        now,
+                        source_ids,
+                        mo["category"],
+                        json.dumps(mo["tags"]),
+                        json.dumps(mo["people"]),
+                        1 if mo["is_action_item"] else 0,
+                        mo["confidence"],
+                    ),
                 )
                 stored += 1
 
@@ -325,9 +469,11 @@ def run_extraction():
 
             conn.commit()
             total_facts += stored
-            log(f"  Stored {stored}/{len(facts)} facts, watermark -> {max_id}")
+            log(f"  Stored {stored}/{len(memory_objects)} facts, watermark -> {max_id}")
 
         log(f"Extraction complete: {total_facts} new facts across {len(chat_ids)} chats")
+        if _parse_failures > 0:
+            log(f"WARNING: {_parse_failures} parse failures during this run")
 
     except Exception as e:
         log(f"Extraction error: {e}")

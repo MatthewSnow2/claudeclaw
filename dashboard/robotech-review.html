@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robotech TBS - Codebase Review</title>
+<style>
+:root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --border: #1e293b;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --accent: #3b82f6;
+    --accent2: #8b5cf6;
+    --green: #10b981;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+    --orange: #f97316;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+h1 {
+    font-size: 2rem;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--border);
+}
+h2 {
+    font-size: 1.4rem;
+    color: var(--accent);
+    margin: 2rem 0 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+}
+h3 {
+    font-size: 1.1rem;
+    color: var(--accent2);
+    margin: 1.5rem 0 0.5rem;
+}
+p {
+    margin: 0.5rem 0;
+    color: var(--text-dim);
+}
+p strong { color: var(--text); }
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+ul {
+    list-style: none;
+    padding-left: 1.5rem;
+    margin: 0.5rem 0;
+}
+li {
+    position: relative;
+    padding: 0.25rem 0;
+    color: var(--text-dim);
+}
+li::before {
+    content: "\25B8";
+    position: absolute;
+    left: -1.2rem;
+    color: var(--accent);
+}
+li.sub { padding-left: 1.5rem; font-size: 0.9rem; }
+li.sub::before { color: var(--text-dim); }
+li strong { color: var(--text); }
+pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-x: auto;
+    margin: 0.75rem 0;
+    font-size: 0.85rem;
+}
+code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+code.inline {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+    color: var(--green);
+}
+.table-wrap {
+    overflow-x: auto;
+    margin: 1rem 0;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+th {
+    background: var(--surface);
+    color: var(--accent);
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    border-bottom: 2px solid var(--border);
+    font-weight: 600;
+}
+td {
+    padding: 0.5rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+}
+tr:hover td { background: rgba(59,130,246,0.05); }
+td strong { color: var(--yellow); }
+td code.inline { font-size: 0.8em; }
+.header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 0;
+    margin-bottom: 1rem;
+}
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.badge-prototype { background: rgba(245,158,11,0.15); color: var(--yellow); border: 1px solid var(--yellow); }
+.badge-unity { background: rgba(59,130,246,0.15); color: var(--accent); border: 1px solid var(--accent); }
+.meta { color: var(--text-dim); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<div class="header-bar">
+    <div>
+        <span class="badge badge-prototype">Early Prototype</span>
+        <span class="badge badge-unity">Unity 2022.3 LTS</span>
+    </div>
+    <div class="meta">Generated 2026-02-28 15:56 | 31 source files | 16 techs</div>
+</div>
+<p>Here is the complete structured analysis of all 31 C# source files, the test files, and documentation.</p>
+
+<hr>
+
+<h1>Robotech TBS -- Full Codebase Review</h1>
+
+<h2 id="project-overview">Project Overview</h2>
+
+<p>A Civilization 6-inspired turn-based strategy game set in the Robotech/Macross universe. Built in Unity 2022 LTS (C#/MonoBehaviour). Single-player skirmish mode with hex grid, two factions (RDF vs Zentradi), a tech tree system, city founding/production, fog of war, and A* pathfinding. Currently a functional prototype using capsule primitives and Gizmo-based rendering.</p>
+
+<hr>
+
+<h2 id="source-file-summaries-(31-files)">Source File Summaries (31 files)</h2>
+
+<hr>
+
+<h3>1. `/tmp/robotech-review/Assets/Scripts/AI/AIController.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.AI.AIController</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Orchestrates AI decision-making during the AI turn phase. Controls unit movement, combat targeting, city production, and tech research for the Zentradi faction.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">ExecuteAIPhase()</code> -- Main coroutine: runs tech decision, city decisions, then unit actions sequentially with visual delays.</li>
+<li><code class="inline">ProcessTechDecision()</code> / <code class="inline">SelectBestTech()</code> / <code class="inline">EvaluateTech()</code> -- Picks the best available tech to research based on a weighted scoring system (critical path, era transition, military bonuses, cost, randomness).</li>
+<li><code class="inline">ProcessCityDecisions()</code> / <code class="inline">SelectUnitToProduce()</code> -- Queues unit production in idle AI cities by cloning existing non-settler unit types.</li>
+<li><code class="inline">ProcessUnitActions()</code> / <code class="inline">ProcessSingleUnit()</code> -- For each AI unit: try attack, then move toward nearest enemy/city, then try attack again.</li>
+<li><code class="inline">TryAttackEnemy()</code> / <code class="inline">FindBestTarget()</code> / <code class="inline">EvaluateTarget()</code> -- Target selection prioritizing low-HP, high-value, settler, and close targets.</li>
+<li><code class="inline">TryMoveTowardObjective()</code> / <code class="inline">FindNearestObjective()</code> / <code class="inline">FindBestMoveToward()</code> -- Pathfinding-based movement toward nearest enemy or city, with fallback to greedy adjacent-step movement.</li>
+<li><strong>Completeness:</strong> Fully implemented. Functional AI with tech, city, and unit management.</li>
+<li><strong>Dependencies:</strong> TurnManager, HexGrid, TechManager, CityManager, MapGenerator, UnitRegistry, CombatResolver, Pathfinder, MapRules, Unit, UnitDefinition, TechDefinition</li>
+<li><strong>Issues:</strong></li>
+<li><code class="inline">SelectUnitToProduce()</code> only copies existing unit types -- if AI has no non-settler units, it builds nothing. No fallback to build from definitions.</li>
+<li>Settler AI is explicitly skipped (<code class="inline">if (unit.definition.canFoundCity) yield break</code>), so AI never founds cities.</li>
+<li>No strategic diversity (always attacks, never defends or retreats).</li>
+</ul>
+
+<hr>
+
+<h3>2. `/tmp/robotech-review/Assets/Scripts/Bootstrap/DefinitionsFactory.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Bootstrap.DefinitionsFactory</code> (static class)</li>
+<li><strong>Purpose:</strong> Factory for creating ScriptableObject instances (terrain, weapons, units, districts, abilities, techs) at runtime during prototyping.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">CreateTerrain()</code>, <code class="inline">CreateWeapon()</code>, <code class="inline">CreateUnit()</code>, <code class="inline">CreateDistrict()</code>, <code class="inline">CreateAbility()</code>, <code class="inline">CreateTech()</code> -- Static factory methods that instantiate and populate ScriptableObjects.</li>
+<li><code class="inline">WithPrerequisites()</code>, <code class="inline">WithUnitUnlocks()</code>, <code class="inline">WithDistrictUnlocks()</code>, <code class="inline">WithAbilityUnlocks()</code>, <code class="inline">WithYieldBonus()</code>, <code class="inline">WithUnitBonuses()</code> -- Extension methods for fluent TechDefinition builder pattern.</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> Data layer ScriptableObjects (TerrainType, WeaponDefinition, UnitDefinition, DistrictDefinition, AbilityDefinition, TechDefinition)</li>
+<li><strong>Issues:</strong> None. Clean factory pattern. Extension methods on <code class="inline">TechDefinition</code> are well-designed for chaining.</li>
+</ul>
+
+<hr>
+
+<h3>3. `/tmp/robotech-review/Assets/Scripts/Bootstrap/GameBootstrap.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Bootstrap.GameBootstrap</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Main initialization coordinator. Creates all systems, generates the map, defines terrain/weapons/units, spawns starting units, initializes the tech tree, and wires turn events.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">Awake()</code> -- Ensures all system components exist, creates terrain/weapon/unit definitions, spawns starting units (2 combat + 2 settlers), initializes fog and tech tree.</li>
+<li><code class="inline">InitializeTechTree()</code> -- Creates 16 technologies (8 Gen0, 8 Gen1) with prerequisites, yield bonuses, and unit stat bonuses. Wires event handlers for tech completion and era transitions.</li>
+<li><code class="inline">OnTurnStarted()</code> -- Per-turn logic: resets unit moves, recomputes RDF fog of war, applies city yields and tech science, applies unit upkeep.</li>
+<li><strong>Completeness:</strong> Fully implemented. Hardcoded definitions (appropriate for prototype).</li>
+<li><strong>Dependencies:</strong> Nearly everything: HexGrid, MapGenerator, FogOfWarSystem, ResourceManager, TurnManager, CityManager, TechManager, UnitRegistry, AIController, HexDebugRenderer, DefinitionsFactory, UnitFactory</li>
+<li><strong>Issues:</strong></li>
+<li><code class="inline">OnTurnStarted</code> only refreshes fog for RDF units, not both factions.</li>
+<li>Unit upkeep is deducted globally (all units) rather than per-faction from that faction's resources.</li>
+<li><code class="inline">ResourceManager.ApplyIncome()</code> is never called in the turn loop -- tech yield bonuses (protoculture/science/production per turn) are not applied each turn. Only the OnTechCompleted event in ResourceManager accumulates bonus *rates* but <code class="inline">ApplyIncome()</code> is not invoked.</li>
+<li>The tech tree hardcodes 16 techs; the GDD envisions 60+ across 6 generations.</li>
+</ul>
+
+<hr>
+
+<h3>4. `/tmp/robotech-review/Assets/Scripts/Bootstrap/UnitFactory.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Bootstrap.UnitFactory</code> (static class)</li>
+<li><strong>Purpose:</strong> Spawns unit GameObjects with proper initialization, tech requirement validation, and retroactive tech bonus application.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">SpawnUnit()</code> -- Creates a capsule primitive, adds Unit component, applies faction color, calls <code class="inline">unit.Init()</code>, applies all already-researched tech upgrades. Supports <code class="inline">bypassTechCheck</code> for debug spawning.</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> Unit, UnitDefinition, HexCoord, TechManager (via FindObjectOfType), UnitRegistry (indirectly via Unit.Init)</li>
+<li><strong>Issues:</strong></li>
+<li>Uses <code class="inline">Object.FindObjectOfType<TechManager>()</code> twice -- once for validation, once for upgrades. Should cache reference.</li>
+<li>No check for whether the spawn hex is passable or already occupied.</li>
+</ul>
+
+<hr>
+
+<h3>5. `/tmp/robotech-review/Assets/Scripts/Cities/City.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Cities.City</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Represents a city entity with production queue, district management, and yield calculation.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">Init()</code> -- Sets name, coordinate, faction, positions the city in world space.</li>
+<li><code class="inline">GetYields()</code> -- Sums production/science/influence from all districts.</li>
+<li><code class="inline">GetDefenseBonus()</code> / <code class="inline">GetVisionBonus()</code> -- Sums defense/vision from districts.</li>
+<li><code class="inline">EnqueueUnit()</code> -- Adds a unit definition to the production queue.</li>
+<li><code class="inline">AdvanceProduction()</code> -- Applies production points; when complete, spawns unit via <code class="inline">UnitFactory.SpawnUnit()</code> at the nearest passable/free hex.</li>
+<li><code class="inline">FindSpawnHex()</code> -- Finds spawn location: city center first, then adjacent hexes.</li>
+<li><strong>Completeness:</strong> Fully implemented for core production loop.</li>
+<li><strong>Dependencies:</strong> UnitFactory, UnitRegistry, MapGenerator, HexGrid, MapRules, DistrictDefinition, UnitDefinition</li>
+<li><strong>Issues:</strong></li>
+<li><code class="inline">Init()</code> sets <code class="inline">name = ...</code> which overwrites <code class="inline">gameObject.name</code> instead of <code class="inline">cityName</code> due to MonoBehaviour's <code class="inline">name</code> property shadowing.</li>
+<li>No district building/purchasing mechanic -- districts list starts empty and there's no way to add them through gameplay.</li>
+<li>No population growth mechanic.</li>
+</ul>
+
+<hr>
+
+<h3>6. `/tmp/robotech-review/Assets/Scripts/Combat/CombatResolver.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Combat.CombatResolver</code> (static class) + <code class="inline">CombatResult</code> (struct)</li>
+<li><strong>Purpose:</strong> Resolves combat between units with weapon range validation, accuracy rolls, damage calculation, and tech attack bonuses.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">ResolveAttack()</code> -- Full combat resolution: validates attackers/targets, checks friendly fire, iterates weapons, rolls accuracy per salvo, applies tech attack bonus, deals damage.</li>
+<li><code class="inline">CanAttack()</code> -- Pre-combat validation: checks faction, weapons, range.</li>
+<li><code class="inline">GetMaxRange()</code> -- Returns the maximum weapon range for a unit.</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> Unit, UnitDefinition, WeaponDefinition</li>
+<li><strong>Issues:</strong></li>
+<li>Armor/defense bonus from terrain is not factored into damage calculation (GDD mentions terrain defense bonuses).</li>
+<li>No counterattack mechanic.</li>
+<li>Does not enforce "one attack per turn" or deduct action points.</li>
+</ul>
+
+<hr>
+
+<h3>7. `/tmp/robotech-review/Assets/Scripts/Core/TurnManager.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Core.TurnManager</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Manages turn progression and Player/AI phase transitions.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">EndPhase()</code> -- Called to end the current phase. Player -> starts AI coroutine. AI -> advances to next turn.</li>
+<li><code class="inline">ProcessAIPhase()</code> -- Coroutine that transitions to AI phase, waits for AIController completion signal (with 30s timeout), then calls <code class="inline">EndPhase()</code>.</li>
+<li><code class="inline">EndTurn()</code> -- Fires OnTurnEnded, increments turn, resets to Player phase, fires OnTurnStarted.</li>
+<li><code class="inline">ResetTurnManager()</code> -- Resets to turn 1 / Player phase.</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> AIController (for OnAIPhaseComplete event)</li>
+<li><strong>Issues:</strong></li>
+<li><strong>BUG: <code class="inline">ProcessAIPhase()</code> calls <code class="inline">EndPhase()</code> at the end</strong>, which when in AI phase calls <code class="inline">EndTurn()</code> correctly. However, if the coroutine pattern changes, this could cause recursion. The current flow works: coroutine sets phase to AI -> waits -> calls EndPhase() which sees AI phase -> calls EndTurn(). This is correct but the comment says "non-recursively" while it technically goes EndPhase->coroutine->EndPhase->EndTurn.</li>
+<li>No victory condition checking.</li>
+</ul>
+
+<hr>
+
+<h3>8. `/tmp/robotech-review/Assets/Scripts/Data/AbilityDefinition.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Data.AbilityDefinition</code> (ScriptableObject)</li>
+<li><strong>Purpose:</strong> Placeholder data container for ability definitions.</li>
+<li><strong>Key Fields:</strong> <code class="inline">abilityId</code>, <code class="inline">displayName</code>, <code class="inline">description</code></li>
+<li><strong>Completeness:</strong> <strong>Stub.</strong> Only has identity fields. No actual ability mechanics (cooldown, effect, targeting, etc.).</li>
+<li><strong>Dependencies:</strong> None.</li>
+<li><strong>Issues:</strong> Explicitly marked as placeholder for future implementation.</li>
+</ul>
+
+<hr>
+
+<h3>9. `/tmp/robotech-review/Assets/Scripts/Data/DistrictDefinition.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Data.DistrictDefinition</code> (ScriptableObject) + <code class="inline">DistrictType</code> enum</li>
+<li><strong>Purpose:</strong> Data container for city district types (Factory, Lab, Outpost) with yield bonuses.</li>
+<li><strong>Key Fields:</strong> <code class="inline">districtId</code>, <code class="inline">displayName</code>, <code class="inline">type</code>, <code class="inline">bonusProduction</code>, <code class="inline">bonusScience</code>, <code class="inline">bonusInfluence</code>, <code class="inline">defenseBonus</code>, <code class="inline">visionBonus</code>, <code class="inline">protocultureUpkeep</code></li>
+<li><strong>Completeness:</strong> Fully implemented as a data definition. No gameplay mechanic to build/place districts exists yet.</li>
+<li><strong>Dependencies:</strong> None.</li>
+<li><strong>Issues:</strong> None in the definition itself. The gameplay loop for constructing districts is missing.</li>
+</ul>
+
+<hr>
+
+<h3>10. `/tmp/robotech-review/Assets/Scripts/Data/TechCategory.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Data.TechCategory</code> (enum)</li>
+<li><strong>Purpose:</strong> Categorizes technologies: Power, Mecha, Weapons, Defense, Aerospace, Special.</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> None.</li>
+<li><strong>Issues:</strong> None.</li>
+</ul>
+
+<hr>
+
+<h3>11. `/tmp/robotech-review/Assets/Scripts/Data/TechDefinition.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Data.TechDefinition</code> (ScriptableObject)</li>
+<li><strong>Purpose:</strong> Data container for a technology in the tech tree, including prerequisites, unlocks, yield bonuses, unit stat bonuses, and progression flags.</li>
+<li><strong>Key Fields:</strong> <code class="inline">techId</code>, <code class="inline">displayName</code>, <code class="inline">costScience</code>, <code class="inline">generation</code>, <code class="inline">category</code>, <code class="inline">prerequisites</code>, <code class="inline">unlocksUnits/Districts/Abilities</code>, yield bonuses (protoculture/science/production per turn), unit stat bonuses (HP/armor/movement/attack), <code class="inline">isCriticalPath</code>, <code class="inline">allowsEraTransition</code>, <code class="inline">icon</code></li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> UnitDefinition, DistrictDefinition, AbilityDefinition</li>
+<li><strong>Issues:</strong></li>
+<li><strong>COMPILATION ERROR:</strong> TechManager.cs references <code class="inline">currentResearch.unlockArmoredVeritech</code>, <code class="inline">unlockSuperVeritech</code>, <code class="inline">unlockECMBonus</code>, <code class="inline">unlockAABonus</code> -- these fields do NOT exist on TechDefinition. This would cause a compile error.</li>
+</ul>
+
+<hr>
+
+<h3>12. `/tmp/robotech-review/Assets/Scripts/Data/TechGeneration.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Data.TechGeneration</code> (enum)</li>
+<li><strong>Purpose:</strong> Defines technology generations: Gen0 through Gen5.</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> None.</li>
+<li><strong>Issues:</strong> None.</li>
+</ul>
+
+<hr>
+
+<h3>13. `/tmp/robotech-review/Assets/Scripts/Data/TerrainType.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Data.TerrainType</code> (ScriptableObject)</li>
+<li><strong>Purpose:</strong> Data container for terrain types with movement costs, defense bonuses, yield values, and protoculture spawn chance.</li>
+<li><strong>Key Fields:</strong> <code class="inline">terrainId</code>, <code class="inline">displayName</code>, <code class="inline">movementCost</code>, <code class="inline">defenseBonus</code>, <code class="inline">isWater</code>, <code class="inline">isImpassable</code>, <code class="inline">isUrban</code>, <code class="inline">providesElevation</code>, yield fields, <code class="inline">protocultureSpawnChance</code></li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> None.</li>
+<li><strong>Issues:</strong> Yield fields (<code class="inline">yieldMaterials</code>, <code class="inline">yieldCredits</code>, <code class="inline">yieldPopulation</code>, <code class="inline">yieldScience</code>) are defined but never used anywhere in the codebase.</li>
+</ul>
+
+<hr>
+
+<h3>14. `/tmp/robotech-review/Assets/Scripts/Data/UnitDefinition.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Data.UnitDefinition</code> (ScriptableObject) + <code class="inline">UnitLayer</code> enum + <code class="inline">Faction</code> enum</li>
+<li><strong>Purpose:</strong> Data container for unit types: stats, weapons, abilities, economy, and tech requirements.</li>
+<li><strong>Key Fields:</strong> <code class="inline">unitId</code>, <code class="inline">displayName</code>, <code class="inline">faction</code>, <code class="inline">layer</code>, <code class="inline">maxHP</code>, <code class="inline">armor</code>, <code class="inline">movement</code>, <code class="inline">vision</code>, <code class="inline">weapons[]</code>, ability flags (<code class="inline">canOverwatch</code>, <code class="inline">hasECM</code>, <code class="inline">hasJumpJets</code>, <code class="inline">canTransform</code>, <code class="inline">canFoundCity</code>), <code class="inline">buildCostMaterials</code>, <code class="inline">upkeepProtoculture</code>, <code class="inline">requiredTech</code>, <code class="inline">techUpgrades</code></li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> WeaponDefinition, TechDefinition</li>
+<li><strong>Issues:</strong></li>
+<li><code class="inline">canOverwatch</code>, <code class="inline">hasECM</code>, <code class="inline">hasJumpJets</code>, <code class="inline">canTransform</code> flags are defined but none have actual gameplay mechanics implemented.</li>
+<li><code class="inline">techUpgrades</code> list is "informational only" per the comment and never used.</li>
+</ul>
+
+<hr>
+
+<h3>15. `/tmp/robotech-review/Assets/Scripts/Data/WeaponDefinition.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Data.WeaponDefinition</code> (ScriptableObject)</li>
+<li><strong>Purpose:</strong> Data container for weapon types with damage, range, accuracy, and tags.</li>
+<li><strong>Key Fields:</strong> <code class="inline">weaponId</code>, <code class="inline">displayName</code>, <code class="inline">weaponClass</code>, <code class="inline">damage</code>, <code class="inline">salvoCount</code>, <code class="inline">rangeMin</code>, <code class="inline">rangeMax</code>, <code class="inline">accuracyBase</code>, tags (<code class="inline">antiAir</code>, <code class="inline">siege</code>, <code class="inline">highExplosive</code>, <code class="inline">kinetic</code>)</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> None.</li>
+<li><strong>Issues:</strong> Tags (<code class="inline">antiAir</code>, <code class="inline">siege</code>, <code class="inline">highExplosive</code>, <code class="inline">kinetic</code>) are defined but never checked in CombatResolver -- no weapon type advantages exist.</li>
+</ul>
+
+<hr>
+
+<h3>16. `/tmp/robotech-review/Assets/Scripts/Debug/DevHotkeys.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Debugging.DevHotkeys</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Development shortcut -- pressing Enter ends the current turn phase.</li>
+<li><strong>Key Methods:</strong> <code class="inline">Update()</code> -- Checks for Enter key, calls <code class="inline">TurnManager.EndPhase()</code>.</li>
+<li><strong>Completeness:</strong> Fully implemented (minimal scope).</li>
+<li><strong>Dependencies:</strong> TurnManager</li>
+<li><strong>Issues:</strong> None.</li>
+</ul>
+
+<hr>
+
+<h3>17. `/tmp/robotech-review/Assets/Scripts/Fog/FogOfWarSystem.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Fog.FogOfWarSystem</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Tracks tile visibility state: "seen" (ever revealed) and "visible" (currently visible).</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">IsSeen()</code> / <code class="inline">IsVisible()</code> -- Queries.</li>
+<li><code class="inline">ClearVisibility()</code> -- Resets current visibility (called at turn start before re-revealing).</li>
+<li><code class="inline">RevealFrom()</code> -- Marks tiles within a radius as seen and visible.</li>
+<li><strong>Completeness:</strong> Partially implemented. Basic functionality works but lacks:</li>
+<li>Line-of-sight blocking (hills/mountains don't block vision to tiles behind them).</li>
+<li>Elevation-based vision extension.</li>
+<li>No visual rendering of fog (no mesh/shader).</li>
+<li><strong>Dependencies:</strong> HexGrid</li>
+<li><strong>Issues:</strong></li>
+<li>Uses <code class="inline">HashSet<(int,int)></code> tuple keys instead of <code class="inline">HashSet<HexCoord></code> -- this works but HexCoord doesn't implement <code class="inline">IEquatable<HexCoord></code>, so using HexCoord directly in HashSet could have issues. The tuple approach is a pragmatic workaround.</li>
+<li>Fog state is never used to hide enemy units in the rendering or UI.</li>
+</ul>
+
+<hr>
+
+<h3>18. `/tmp/robotech-review/Assets/Scripts/Hex/HexCoord.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Hex.HexCoord</code> (struct)</li>
+<li><strong>Purpose:</strong> Axial coordinate system for pointy-top hexagonal grid.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">Distance()</code> -- Manhattan distance in cube space.</li>
+<li><code class="inline">ToWorld()</code> -- Converts axial coordinates to world-space Vector3.</li>
+<li>Operators <code class="inline">+</code>, <code class="inline">-</code> for coordinate arithmetic.</li>
+<li>Static <code class="inline">Neighbors</code> array with 6 directional offsets.</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> None (uses UnityEngine.Mathf).</li>
+<li><strong>Issues:</strong></li>
+<li><strong>Does not implement <code class="inline">IEquatable<HexCoord></code>, <code class="inline">GetHashCode()</code>, or <code class="inline">Equals()</code>.</strong> This means using HexCoord as a Dictionary key relies on default struct equality (which does value comparison correctly but boxes, causing GC allocations). The <code class="inline">Pathfinder.PriorityQueue</code> uses <code class="inline">HashSet<T></code> with HexCoord, which will work but with suboptimal performance.</li>
+</ul>
+
+<hr>
+
+<h3>19. `/tmp/robotech-review/Assets/Scripts/Hex/HexGrid.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Hex.HexGrid</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Defines the hex grid dimensions and provides spatial queries.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">AllCoords()</code> -- Yields all valid hex coordinates.</li>
+<li><code class="inline">InBounds()</code> -- Checks if a coordinate is within grid bounds.</li>
+<li><code class="inline">CoordToWorld()</code> -- World position from coordinate.</li>
+<li><code class="inline">Neighbors()</code> -- Yields in-bounds neighbors of a coordinate.</li>
+<li><code class="inline">Range()</code> -- Returns all coordinates within a given range (flood fill).</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> HexCoord</li>
+<li><strong>Issues:</strong></li>
+<li><code class="inline">coords</code> dictionary is declared but never populated or used.</li>
+<li><code class="inline">Neighbors()</code> returns <code class="inline">IEnumerable<HexCoord></code> -- cannot be indexed. This causes a bug in <code class="inline">HexDebugRenderer</code> which tries <code class="inline">grid.Neighbors(c)[dir]</code>.</li>
+</ul>
+
+<hr>
+
+<h3>20. `/tmp/robotech-review/Assets/Scripts/Hex/HexMath.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Hex.HexMath</code> (static class)</li>
+<li><strong>Purpose:</strong> Converts world-space positions back to axial hex coordinates using cube rounding.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">AxialFromWorld()</code> -- Inverse of <code class="inline">HexCoord.ToWorld()</code>.</li>
+<li><code class="inline">CubeRound()</code> -- Cube rounding algorithm for accurate hex snapping.</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> HexCoord</li>
+<li><strong>Issues:</strong> None.</li>
+</ul>
+
+<hr>
+
+<h3>21. `/tmp/robotech-review/Assets/Scripts/Hex/Pathfinder.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Hex.Pathfinder</code> (static class) + <code class="inline">PathResult</code> (class) + <code class="inline">PriorityQueue<T></code> (class)</li>
+<li><strong>Purpose:</strong> A* pathfinding on the hex grid with terrain costs, passability checks, and movement budgets.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">FindPath()</code> -- Standard A* from start to goal with optional max cost.</li>
+<li><code class="inline">GetReachableHexes()</code> -- BFS to find all hexes reachable within a movement budget.</li>
+<li><code class="inline">FindPathWithBudget()</code> -- Finds path to goal, then truncates to what's affordable within the movement budget.</li>
+<li><code class="inline">GetMovementCost()</code> -- Returns terrain movement cost.</li>
+<li><strong>Completeness:</strong> Fully implemented with a custom <code class="inline">PriorityQueue<T></code> (binary heap).</li>
+<li><strong>Dependencies:</strong> HexGrid, MapGenerator, UnitDefinition, UnitRegistry, MapRules, TerrainType</li>
+<li><strong>Issues:</strong></li>
+<li><code class="inline">FindPathWithBudget()</code> finds the full path first (potentially expensive) then truncates. Could be optimized to stop A* early.</li>
+<li><code class="inline">PriorityQueue.Enqueue()</code> doesn't update priority if item already exists -- the <code class="inline">Contains</code> check in the A* loop prevents duplicate enqueues, but this could miss cases where a better path is found to an already-queued node.</li>
+</ul>
+
+<hr>
+
+<h3>22. `/tmp/robotech-review/Assets/Scripts/Input/SelectionController.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Inputs.SelectionController</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Handles mouse input for unit selection, movement commands, attack commands, path preview, and city founding.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">Update()</code> -- Updates hover hex, handles left-click (select/move/attack) and right-click (clear), B key (found city).</li>
+<li><code class="inline">UpdateHover()</code> / <code class="inline">UpdatePathPreview()</code> -- Tracks mouse position on hex grid and calculates path preview.</li>
+<li><code class="inline">HandleLeftClick()</code> -- Raycasts for unit selection; if unit selected, moves or attacks based on mode.</li>
+<li><code class="inline">SelectUnit()</code> / <code class="inline">ClearSelection()</code> / <code class="inline">RecomputeRanges()</code> -- Selection management with reachable/attackable hex computation.</li>
+<li><code class="inline">CanFoundCityHere()</code> / <code class="inline">TryFoundCity()</code> -- City founding validation (min distance, passable terrain, not owned).</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> HexGrid, HexMath, MapGenerator, CityManager, UnitRegistry, CombatResolver, Pathfinder, Unit</li>
+<li><strong>Issues:</strong></li>
+<li>No check that the selected unit belongs to the player faction -- you can select and command enemy units.</li>
+<li>No check that it's the Player phase before allowing actions.</li>
+</ul>
+
+<hr>
+
+<h3>23. `/tmp/robotech-review/Assets/Scripts/Map/MapGenerator.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Map.MapGenerator</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Procedural terrain assignment using random distribution with configurable probabilities.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">Generate()</code> -- Iterates all hex coords, assigns terrain based on cumulative probability thresholds. Top/bottom rows forced to coast.</li>
+<li><code class="inline">GetTerrain()</code> -- Returns terrain at coordinate (defaults to plains if not found).</li>
+<li><strong>Completeness:</strong> Fully implemented (basic).</li>
+<li><strong>Dependencies:</strong> HexGrid, TerrainType</li>
+<li><strong>Issues:</strong></li>
+<li>Uses <code class="inline">System.Random</code> instead of UnityEngine.Random -- inconsistent with rest of codebase. No seed control for reproducible maps.</li>
+<li>No coherent terrain generation (pure random per tile). Real maps would use Perlin noise or similar for biome clustering.</li>
+<li>Ocean is only assigned for <code class="inline">c.r < 0</code> or <code class="inline">c.r > grid.height - 1</code>, which should never happen since <code class="inline">AllCoords()</code> only yields <code class="inline">r</code> from 0 to height-1.</li>
+</ul>
+
+<hr>
+
+<h3>24. `/tmp/robotech-review/Assets/Scripts/Rendering/HexDebugRenderer.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Rendering.HexDebugRenderer</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Gizmo-based visualization of the hex grid, terrain colors, city ownership borders, movement ranges, path previews, and hover hex.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">OnDrawGizmos()</code> -- Main render loop: draws terrain hexes, ownership overlays with border edges, then movement visualization.</li>
+<li><code class="inline">DrawMovementVisualization()</code> -- Draws reachable hexes (green), attackable hexes (red), path preview (yellow), and hover hex (white).</li>
+<li><code class="inline">TerrainColor()</code> / <code class="inline">OwnerColor()</code> -- Color lookups by terrain/faction.</li>
+<li><code class="inline">DrawHex()</code> / <code class="inline">DrawFilledHex()</code> / <code class="inline">GetHexVerts()</code> -- Hex geometry helpers.</li>
+<li><strong>Completeness:</strong> Fully implemented for debug visualization.</li>
+<li><strong>Dependencies:</strong> HexGrid, MapGenerator, CityManager, SelectionController</li>
+<li><strong>Issues:</strong></li>
+<li><strong>BUG (line 53):</strong> <code class="inline">var n = grid.Neighbors(c)[dir]</code> -- <code class="inline">grid.Neighbors()</code> returns <code class="inline">IEnumerable<HexCoord></code>, which cannot be indexed with <code class="inline">[]</code>. This will cause a compilation error.</li>
+<li><code class="inline">TerrainColor()</code> uses string matching (<code class="inline">displayName.ToLower().Contains(...)</code>) for some terrain types instead of using the terrain properties -- fragile.</li>
+</ul>
+
+<hr>
+
+<h3>25. `/tmp/robotech-review/Assets/Scripts/Systems/CityManager.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Systems.CityManager</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Manages city lifecycle: founding, territory ownership, border growth, and city yield application.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">FoundCity()</code> -- Creates a new city at a coordinate with initial 1-ring territory, validates bounds/ownership/distance.</li>
+<li><code class="inline">IsTooCloseToAnyCity()</code> -- Enforces minimum distance between cities.</li>
+<li><code class="inline">GrowBorders()</code> -- Expands each city's territory by claiming unowned frontier tiles (1 per turn by default).</li>
+<li><code class="inline">ApplyCityYields()</code> -- Calculates production per city (base 2 + district bonuses), advances production queues, adds science/influence to global resources.</li>
+<li><strong>Completeness:</strong> Fully implemented for basic city loop.</li>
+<li><strong>Dependencies:</strong> City, HexGrid, MapGenerator, ResourceManager, UnitFactory (via City.AdvanceProduction)</li>
+<li><strong>Issues:</strong></li>
+<li>Border growth claims from ANY frontier, not prioritized by influence or terrain value.</li>
+<li><code class="inline">GrowBorders</code> iterates the entire ownership dictionary for each city each turn -- O(cities * owned_tiles). Will be slow on large maps.</li>
+<li>No cap on territory size.</li>
+</ul>
+
+<hr>
+
+<h3>26. `/tmp/robotech-review/Assets/Scripts/Systems/MapRules.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Systems.MapRules</code> (static class)</li>
+<li><strong>Purpose:</strong> Defines passability rules: impassable terrain blocks all; water blocks ground units; air units can pass over anything.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">IsPassable()</code> -- Checks terrain passability based on unit layer.</li>
+<li><strong>Completeness:</strong> Fully implemented (minimal scope).</li>
+<li><strong>Dependencies:</strong> UnitDefinition, TerrainType</li>
+<li><strong>Issues:</strong></li>
+<li>Air units can pass impassable terrain (the <code class="inline">isImpassable</code> check returns false before the air check) -- this is actually correct. Mountains are both impassable and elevated. But the check <code class="inline">if (terrain.isImpassable) return false</code> blocks ALL units from impassable tiles, including air. If this is intentional, fine. If air should fly over mountains, this is a bug.</li>
+</ul>
+
+<hr>
+
+<h3>27. `/tmp/robotech-review/Assets/Scripts/Systems/ResourceManager.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Systems.ResourceManager</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Tracks global resources (protoculture, materials, credits, science) and tech yield bonuses.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">ApplyTechBonus()</code> -- Accumulates per-turn yield bonuses from researched techs.</li>
+<li><code class="inline">CalculateTotalProtoculturePerTurn()</code> / <code class="inline">...SciencePerTurn()</code> / <code class="inline">...ProductionPerTurn()</code> -- Return current bonus rates.</li>
+<li><code class="inline">ApplyUpkeep()</code> -- Deducts protoculture for unit maintenance.</li>
+<li><code class="inline">AddTurnYields()</code> -- Adds city yields to global resources.</li>
+<li><code class="inline">ApplyIncome()</code> -- Converts accumulated bonus rates into actual resource increments.</li>
+<li>Getters/Setters for bonus amounts.</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> TechManager (via FindObjectOfType), TechDefinition</li>
+<li><strong>Issues:</strong></li>
+<li><strong><code class="inline">ApplyIncome()</code> is never called in the game loop.</strong> Tech yield bonuses accumulate as rates but are never applied to actual resources each turn. Only the one-time event-driven application via <code class="inline">OnTechCompleted</code> works.</li>
+<li><code class="inline">OnEnable</code>/<code class="inline">OnDisable</code> use <code class="inline">FindObjectOfType<TechManager>()</code> for event subscription -- fragile if execution order varies.</li>
+<li>TODO comments: deficit penalties for negative protoculture, influence-driven border growth.</li>
+</ul>
+
+<hr>
+
+<h3>28. `/tmp/robotech-review/Assets/Scripts/Systems/TechManager.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Systems.TechManager</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Manages the technology tree: research progress, prerequisite validation, era transitions, and retroactive unit upgrades.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">AddScience()</code> -- Accumulates science toward current research; triggers <code class="inline">CompleteCurrentTech()</code> when threshold met.</li>
+<li><code class="inline">SetResearch()</code> -- Sets current research target and resets progress.</li>
+<li><code class="inline">CompleteCurrentTech()</code> -- Marks tech as researched, applies retroactive unit upgrades via UnitRegistry, handles era transitions, fires events, updates available techs.</li>
+<li><code class="inline">IsTechAvailable()</code> -- Checks prerequisites and whether already researched.</li>
+<li><code class="inline">UpdateAvailableTechs()</code> -- Refreshes the list of currently researchable techs.</li>
+<li><code class="inline">GetTechsByGeneration()</code> / <code class="inline">GetTechsByCategory()</code> -- LINQ queries.</li>
+<li><strong>Completeness:</strong> Mostly implemented.</li>
+<li><strong>Dependencies:</strong> UnitRegistry, TechDefinition, Unit</li>
+<li><strong>Issues:</strong></li>
+<li><strong>COMPILATION ERROR (lines 50-53):</strong> References <code class="inline">currentResearch.unlockArmoredVeritech</code>, <code class="inline">.unlockSuperVeritech</code>, <code class="inline">.unlockECMBonus</code>, <code class="inline">.unlockAABonus</code> -- these fields do not exist on <code class="inline">TechDefinition</code>. These are legacy fields from a previous prototype version that were not removed or migrated.</li>
+<li>Legacy boolean flags (<code class="inline">hasArmoredVeritech</code>, <code class="inline">hasSuperVeritech</code>, <code class="inline">hasECMBonus</code>, <code class="inline">hasAABonus</code>) are still used by UIShell for build button enablement but conflict with the new TechDefinition-based system.</li>
+<li>No per-faction tech tracking -- both factions share the same tech manager.</li>
+</ul>
+
+<hr>
+
+<h3>29. `/tmp/robotech-review/Assets/Scripts/Systems/UnitRegistry.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Systems.UnitRegistry</code> (MonoBehaviour, Singleton)</li>
+<li><strong>Purpose:</strong> Centralized registry for all units with O(1) position lookups and efficient faction queries. Replaces expensive <code class="inline">FindObjectsOfType</code> calls.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">Register()</code> / <code class="inline">Unregister()</code> -- Add/remove units from all indexes.</li>
+<li><code class="inline">UpdatePosition()</code> -- Updates position index when a unit moves.</li>
+<li><code class="inline">GetUnitAt()</code> / <code class="inline">IsOccupied()</code> -- O(1) position queries.</li>
+<li><code class="inline">GetAllUnits()</code> / <code class="inline">GetUnitsByFaction()</code> / <code class="inline">GetEnemyUnits()</code> -- Collection queries.</li>
+<li><code class="inline">GetUnitsInRange()</code> / <code class="inline">GetEnemiesInRange()</code> -- Range-based queries (O(n) scan).</li>
+<li><code class="inline">Clear()</code> -- Resets all indexes.</li>
+<li><strong>Completeness:</strong> Fully implemented. Well-designed singleton with proper cleanup.</li>
+<li><strong>Dependencies:</strong> Unit, HexCoord, Faction</li>
+<li><strong>Issues:</strong></li>
+<li><code class="inline">GetEnemyUnits()</code> assumes exactly 2 factions. Would need refactoring for multiplayer.</li>
+</ul>
+
+<hr>
+
+<h3>30. `/tmp/robotech-review/Assets/Scripts/UI/UIShell.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.UI.UIShell</code> (MonoBehaviour)</li>
+<li><strong>Purpose:</strong> Builds the entire UI programmatically (no prefabs). Bottom panel with unit info, attack toggle, city founding, unit build buttons, end turn button. Top area with research progress and city production summary.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">Awake()</code> -- Finds all manager references, builds Canvas + all UI elements in code.</li>
+<li><code class="inline">BuildCanvas()</code> -- Massive method (300+ lines) that creates all UI elements, buttons, dropdown, tooltips.</li>
+<li><code class="inline">Update()</code> -- Enables/disables buttons based on tech unlock state and city availability, updates research text, city panel, build hints.</li>
+<li><code class="inline">QueueCityBuild()</code> -- Enqueues a unit in the selected/first city.</li>
+<li><code class="inline">GetCityPanelSummary()</code> -- Formats city production status.</li>
+<li><code class="inline">PopulateCityDropdown()</code> -- Keeps city dropdown synchronized.</li>
+<li>Tooltip methods with <code class="inline">EventTrigger</code> for hover info.</li>
+<li><strong>Completeness:</strong> Fully implemented but monolithic.</li>
+<li><strong>Dependencies:</strong> Nearly everything: SelectionController, TurnManager, TechManager, ResourceManager, CityManager, HexGrid, MapGenerator, GameBootstrap, Unit, City</li>
+<li><strong>Issues:</strong></li>
+<li><code class="inline">IsTileFree()</code> (line 481-488) uses <code class="inline">FindObjectsOfType<Unit>()</code> -- expensive O(n) call every frame. Should use UnitRegistry.</li>
+<li>Build buttons reference legacy <code class="inline">techManager.hasArmoredVeritech</code> / <code class="inline">hasSuperVeritech</code> flags that depend on the broken TechManager fields.</li>
+<li>All UI built in code with no separation -- will be very hard to maintain or modify.</li>
+<li>RectTransform layout values are arbitrary anchored percentages -- will break at different resolutions.</li>
+</ul>
+
+<hr>
+
+<h3>31. `/tmp/robotech-review/Assets/Scripts/Units/Unit.cs`</h3>
+
+<ul>
+<li><strong>Namespace/Class:</strong> <code class="inline">Robotech.TBS.Units.Unit</code> (MonoBehaviour, requires Collider)</li>
+<li><strong>Purpose:</strong> Unit entity with movement (single-step and pathfinding-based), combat damage, and tech upgrade tracking.</li>
+<li><strong>Key Methods:</strong></li>
+<li><code class="inline">Init()</code> -- Sets definition, position, HP, registers with UnitRegistry.</li>
+<li><code class="inline">NewTurn()</code> -- Resets movement points (base + tech bonus).</li>
+<li><code class="inline">CanMoveTo()</code> -- Legacy single-step movement check.</li>
+<li><code class="inline">CanReach()</code> -- Pathfinding-based reachability check.</li>
+<li><code class="inline">MoveTo()</code> -- Single-step move with UnitRegistry position update.</li>
+<li><code class="inline">MoveAlongPath()</code> -- Multi-step path traversal with terrain cost deduction.</li>
+<li><code class="inline">MoveToTarget()</code> -- Pathfinding + movement in one call.</li>
+<li><code class="inline">GetReachableHexes()</code> -- Delegates to Pathfinder.</li>
+<li><code class="inline">TakeDamage()</code> -- Applies damage (reduced by armor + bonus), destroys at 0 HP.</li>
+<li><code class="inline">ApplyTechUpgrade()</code> -- Applies a tech's stat bonuses (HP, armor, movement, attack). Prevents duplicate application.</li>
+<li><code class="inline">HasTechUpgrade()</code> -- Checks if a specific tech was already applied.</li>
+<li>Getters: <code class="inline">GetMaxHP()</code>, <code class="inline">GetArmor()</code>, <code class="inline">GetMovement()</code>, <code class="inline">GetAttackBonus()</code>.</li>
+<li><strong>Completeness:</strong> Fully implemented.</li>
+<li><strong>Dependencies:</strong> UnitDefinition, TechDefinition, UnitRegistry, Pathfinder, HexGrid, MapGenerator</li>
+<li><strong>Issues:</strong></li>
+<li><code class="inline">OnDestroy()</code> unregisters from UnitRegistry but the <code class="inline">Destroy(gameObject)</code> in <code class="inline">TakeDamage</code> triggers this -- this is correct Unity lifecycle behavior.</li>
+<li>No animation or visual feedback for movement/damage.</li>
+</ul>
+
+<hr>
+
+<h2 id="test-files-summary">Test Files Summary</h2>
+
+<h3>EditMode Tests (5 files)</h3>
+
+<p>1. <strong><code class="inline">HexMathTests.cs</code></strong> -- Single sanity test (<code class="inline">2+2=4</code>). Not actually testing hex math.</p>
+
+<p>2. <strong><code class="inline">TechDefinitionTests.cs</code></strong> (8 tests) -- Validates TechDefinition ScriptableObject: creation, defaults, field population, lists, prerequisites, yield/bonus defaults.</p>
+
+<p>3. <strong><code class="inline">TechManagerTests.cs</code></strong> (17 tests) -- Tests DefinitionsFactory.CreateTech, IsTechAvailable with prerequisites, era transitions, GetTechsByGeneration/Category, UpdateAvailableTechs, and CompleteCurrentTech integration.</p>
+
+<p>4. <strong><code class="inline">ResourceManagerTechTests.cs</code></strong> (20 tests) -- Tests ResourceManager bonus getters/setters, ApplyTechBonus, CalculateTotalPerTurn methods, ApplyIncome, and integration with multiple techs.</p>
+
+<p>5. <strong><code class="inline">Phase2IntegrationTests.cs</code></strong> (12 tests) -- Integration tests for resource bonuses, unit factory tech requirements, unit upgrades (on spawn, retroactive, stacking, persistence, duplicate prevention, bypass).</p>
+
+<p>6. <strong><code class="inline">Phase2ValidationTests.cs</code></strong> (9 tests) -- Validates the full 16-tech tree: Gen0/Gen1 counts, prerequisites, specific values, uniqueness, no circular dependencies, availability rules.</p>
+
+<p>7. <strong><code class="inline">UnitTechIntegrationTests.cs</code></strong> (11 tests) -- Tests UnitFactory tech gating, Unit.ApplyTechUpgrade for all stat types, duplicate prevention, multi-tech stacking, bypass flag, retroactive upgrades via TechManager, persistence.</p>
+
+<h3>PlayMode Tests (3 files)</h3>
+
+<p>8. <strong><code class="inline">TechIntegrationTests.cs</code></strong> (8 UnityTests) -- Full bootstrap integration: 16 techs created, Gen0 available/Gen1 locked, era transition, prerequisite chains, event firing.</p>
+
+<p>9. <strong><code class="inline">Phase2GameplayTests.cs</code></strong> (10 UnityTests) -- Gameplay scenarios: base income, tech bonuses (protoculture/science), unit production gating, unit upgrades, stability across multiple techs, era transitions.</p>
+
+<p>10. <strong><code class="inline">Phase2SystemInteractionTests.cs</code></strong> (8 UnityTests) -- Cross-system communication: TechManager-to-ResourceManager events, TechManager-to-Unit upgrades, bonus accumulation, edge cases (null manager, null tech), multi-unit same bonus, event unsubscription.</p>
+
+<p><strong>Test Issues:</strong></p>
+<ul>
+<li>Phase2IntegrationTests and Phase2GameplayTests use a helper <code class="inline">ApplyTechUpgrades()</code> that directly mutates <code class="inline">unit.definition.armor/maxHP/movement</code> -- this modifies the shared ScriptableObject, which would affect all units sharing that definition. The Unit.cs has its own proper <code class="inline">ApplyTechUpgrade()</code> that uses private bonus fields instead.</li>
+<li>HexMathTests is effectively empty (no real hex math tests).</li>
+</ul>
+
+<hr>
+
+<h2 id="documentation-summary">Documentation Summary</h2>
+
+<h3>`docs/GDD.md`</h3>
+<p>Game Design Document. Covers: 4X core loop, hex map with 11 terrain types, 4 resources, city/district system, tech tree progression, full Zentradi + RDF unit rosters (17+ unit types planned), combat model normalized from Palladium Robotech Tactics, vision/ZOC, AI personalities, and UI/UX guidelines.</p>
+
+<h3>`ARCHITECTURE.md`</h3>
+<p>Technical architecture guide. Describes the 4-layer architecture (Bootstrap -> Data -> System -> Input/View), event-driven communication, hex coordinate system, factory pattern, game loop flow, directory structure, and migration path from prototype to production. Well-written and comprehensive.</p>
+
+<hr>
+
+<h2 id="critical-issues-summary">Critical Issues Summary</h2>
+
+<div class="table-wrap"><table>
+<thead><tr><th>Severity</th><th>File</th><th>Issue</th></tr></thead><tbody>
+<tr><td><strong>COMPILE ERROR</strong></td><td><code class="inline">TechManager.cs:50-53</code></td><td>References <code class="inline">unlockArmoredVeritech</code>, <code class="inline">unlockSuperVeritech</code>, <code class="inline">unlockECMBonus</code>, <code class="inline">unlockAABonus</code> on TechDefinition -- fields don't exist</td></tr>
+<tr><td><strong>COMPILE ERROR</strong></td><td><code class="inline">HexDebugRenderer.cs:53</code></td><td><code class="inline">grid.Neighbors(c)[dir]</code> -- IEnumerable cannot be indexed</td></tr>
+<tr><td><strong>BUG</strong></td><td><code class="inline">ResourceManager.cs</code></td><td><code class="inline">ApplyIncome()</code> is never called -- tech per-turn yield bonuses don't actually accrue each turn</td></tr>
+<tr><td><strong>BUG</strong></td><td><code class="inline">UIShell.cs:481-488</code></td><td><code class="inline">IsTileFree()</code> uses <code class="inline">FindObjectsOfType<Unit>()</code> instead of UnitRegistry</td></tr>
+<tr><td><strong>BUG</strong></td><td><code class="inline">SelectionController.cs</code></td><td>No faction check -- player can select and command enemy units</td></tr>
+<tr><td><strong>BUG</strong></td><td><code class="inline">SelectionController.cs</code></td><td>No phase check -- player can act during AI phase</td></tr>
+<tr><td><strong>BUG</strong></td><td><code class="inline">City.cs:37</code></td><td><code class="inline">name = ...</code> overwrites <code class="inline">gameObject.name</code> instead of <code class="inline">cityName</code> due to MonoBehaviour shadowing</td></tr>
+<tr><td><strong>BUG</strong></td><td><code class="inline">GameBootstrap.cs</code></td><td>Only RDF units get fog-of-war visibility refresh; upkeep deducted globally, not per-faction</td></tr>
+<tr><td><strong>DESIGN</strong></td><td><code class="inline">AIController.cs</code></td><td>AI never founds cities, never builds from scratch if no units exist</td></tr>
+<tr><td><strong>DESIGN</strong></td><td><code class="inline">TechManager.cs</code></td><td>Single shared tech tree for both factions -- no per-faction research</td></tr>
+<tr><td><strong>PERF</strong></td><td><code class="inline">HexCoord.cs</code></td><td>Missing <code class="inline">IEquatable<HexCoord></code> and <code class="inline">GetHashCode()</code> -- causes boxing in Dictionary/HashSet operations</td></tr>
+</tbody></table></div>
+
+<hr>
+
+<h2 id="completeness-overview">Completeness Overview</h2>
+
+<div class="table-wrap"><table>
+<thead><tr><th>Category</th><th>Status</th></tr></thead><tbody>
+<tr><td>Hex grid / coordinates / math</td><td>Fully implemented</td></tr>
+<tr><td>Pathfinding (A*)</td><td>Fully implemented</td></tr>
+<tr><td>Map generation</td><td>Basic (random, no coherence)</td></tr>
+<tr><td>Unit movement</td><td>Fully implemented</td></tr>
+<tr><td>Combat</td><td>Implemented (no terrain defense, no counters)</td></tr>
+<tr><td>Tech tree</td><td>16/60+ techs, has compile errors</td></tr>
+<tr><td>City founding / production</td><td>Implemented</td></tr>
+<tr><td>District building</td><td>Data only, no gameplay mechanic</td></tr>
+<tr><td>Fog of war</td><td>Basic (no LOS blocking)</td></tr>
+<tr><td>AI</td><td>Functional but limited</td></tr>
+<tr><td>UI</td><td>Functional, programmatic, monolithic</td></tr>
+<tr><td>Save/Load</td><td>Not implemented</td></tr>
+<tr><td>Abilities (transform, ECM, etc.)</td><td>Data flags only, no mechanics</td></tr>
+<tr><td>Multiplayer / Diplomacy</td><td>Not implemented</td></tr>
+<tr><td>Visual rendering</td><td>Gizmo debug only</td></tr>
+</tbody></table></div>
+<footer style="margin-top:3rem; padding:1rem 0; border-top:1px solid var(--border); color:var(--text-dim); font-size:0.8rem; text-align:center;">
+Robotech TBS Codebase Review - Generated by EA-Claude (Ravage) | 2026-02-28
+</footer>
+</body>
+</html>
