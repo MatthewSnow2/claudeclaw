@@ -1,0 +1,27 @@
+{
+  "name": "claudeclaw-memory-mcp",
+  "version": "1.0.0",
+  "description": "Read-only MCP server exposing ClaudeClaw memory for Claude Code",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "claudeclaw-memory-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "better-sqlite3": "^11.8.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
