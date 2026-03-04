@@ -8,13 +8,18 @@ Generate high-quality LinkedIn posts on a rotation of topics, schedule them via 
 
 ## Workflow
 
-1. **Pick a topic** from rotation: AI Agents, Level 5 Autonomy/Dark Factory, Healthcare AI (bottom-up worker-focused, NOT executive top-down), Supply Chain AI, or M2AI project milestones
-2. **Write the post** in Matthew's voice (see Voice Guide below). Under 300 words.
-3. **Generate an image** using Hugging Face Z-Image Turbo MCP tool at 1280x720. Modern tech aesthetic, visually engaging, coral/indigo accents.
-4. **Save image locally** to `/home/apexaipc/projects/claudeclaw/dashboard/media/starscream_YYYY-MM-DD.webp`
-5. **Upload to Imgur** for a persistent public URL: `python3 /home/apexaipc/projects/claudeclaw/dashboard/upload_image.py /path/to/image.webp`
-6. **Schedule via Late API** with `scheduledFor` set to 30 minutes from now. Use the Imgur URL in `mediaItems`. LinkedIn account ID: `69307d78f43160a0bc999f1a`
-7. **Report back**: "Starscream draft ready. Topic: [summary]. Scheduled to publish in 30min."
+1. **Check the performance brief** at `/home/apexaipc/projects/claudeclaw/store/starscream_performance_brief.md`. This file contains analytics on how past posts performed (engagement rates, impressions, top/bottom topics). Use it to:
+   - Favor topics that are performing well
+   - Adjust your approach for topics that underperformed
+   - Note any content patterns that drive higher engagement
+   - If the file doesn't exist or is empty, skip this step and proceed normally
+2. **Pick a topic** informed by the brief. Rotation: AI Agents, Level 5 Autonomy/Dark Factory, Healthcare AI (bottom-up worker-focused, NOT executive top-down), Supply Chain AI, or M2AI project milestones. Weight toward topics the brief identifies as high-performing.
+3. **Write the post** in Matthew's voice (see Voice Guide below). Under 300 words.
+4. **Generate an image** using Hugging Face Z-Image Turbo MCP tool at 1280x720. Modern tech aesthetic, visually engaging, coral/indigo accents.
+5. **Save image locally** to `/home/apexaipc/projects/claudeclaw/dashboard/media/starscream_YYYY-MM-DD.webp`
+6. **Upload to Imgur** for a persistent public URL: `python3 /home/apexaipc/projects/claudeclaw/dashboard/upload_image.py /path/to/image.webp`
+7. **Schedule via Late API** with `scheduledFor` set to 30 minutes from now. Use the Imgur URL in `mediaItems`. LinkedIn account ID: `69a62fa6dc8cab9432b3af43`
+8. **Report back**: "Starscream draft ready. Topic: [summary]. Scheduled to publish in 30min. Performance note: [brief reason for topic choice based on analytics]."
 
 ## Critical Rules
 
@@ -27,7 +32,7 @@ Generate high-quality LinkedIn posts on a rotation of topics, schedule them via 
 
 Base URL: `https://getlate.dev/api/v1`
 Auth: `Authorization: Bearer $LATE_API_KEY` (from `~/.env.shared`)
-LinkedIn Account ID: `69307d78f43160a0bc999f1a`
+LinkedIn Account ID: `69a62fa6dc8cab9432b3af43`
 
 ### Schedule a Post
 
@@ -39,7 +44,7 @@ curl -X POST https://getlate.dev/api/v1/posts \
     "content": "Post text here",
     "scheduledFor": "2026-03-01T12:00:00",
     "timezone": "America/Chicago",
-    "platforms": [{"platform": "linkedin", "accountId": "69307d78f43160a0bc999f1a"}],
+    "platforms": [{"platform": "linkedin", "accountId": "69a62fa6dc8cab9432b3af43"}],
     "mediaItems": [{"type": "image", "url": "https://imgur.com/..."}]
   }'
 ```
