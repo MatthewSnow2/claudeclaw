@@ -120,10 +120,16 @@ function createSchema(database: Database.Database): void {
       salience        REAL NOT NULL DEFAULT 1.0,
       created_at      INTEGER NOT NULL,
       accessed_at     INTEGER NOT NULL,
-      source_log_ids  TEXT
+      source_log_ids  TEXT,
+      category        TEXT,
+      tags            TEXT,
+      people          TEXT,
+      is_action_item  INTEGER NOT NULL DEFAULT 0,
+      confidence      REAL NOT NULL DEFAULT 1.0
     );
 
     CREATE INDEX IF NOT EXISTS idx_memvec_chat ON memory_vectors(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_memvec_category ON memory_vectors(chat_id, category);
 
     CREATE TABLE IF NOT EXISTS extraction_state (
       chat_id         TEXT PRIMARY KEY,
@@ -134,6 +140,39 @@ function createSchema(database: Database.Database): void {
   `);
 }
 
+/**
+ * Idempotent migration for memory_vectors metadata columns.
+ * Safe to call on existing DBs -- checks PRAGMA table_info before ALTER.
+ */
+export function runMigrations(database: Database.Database): void {
+  const cols = database
+    .prepare("PRAGMA table_info('memory_vectors')")
+    .all() as Array<{ name: string }>;
+  const existing = new Set(cols.map((c) => c.name));
+
+  const additions: Array<{ col: string; def: string }> = [
+    { col: 'category', def: 'TEXT' },
+    { col: 'tags', def: 'TEXT' },
+    { col: 'people', def: 'TEXT' },
+    { col: 'is_action_item', def: 'INTEGER NOT NULL DEFAULT 0' },
+    { col: 'confidence', def: 'REAL NOT NULL DEFAULT 1.0' },
+  ];
+
+  for (const { col, def } of additions) {
+    if (!existing.has(col)) {
+      database.exec(`ALTER TABLE memory_vectors ADD COLUMN ${col} ${def}`);
+    }
+  }
+
+  // Ensure category index exists
+  database.exec(
+    'CREATE INDEX IF NOT EXISTS idx_memvec_category ON memory_vectors(chat_id, category)',
+  );
+}
+
+/** @internal - exported for tests */
+export const _runMigrations = runMigrations;
+
 export function initDatabase(): void {
   fs.mkdirSync(STORE_DIR, { recursive: true });
   const dbPath = path.join(STORE_DIR, 'claudeclaw.db');
@@ -141,6 +180,7 @@ export function initDatabase(): void {
   db.pragma('journal_mode = WAL');
   db.pragma('busy_timeout = 5000');
   createSchema(db);
+  runMigrations(db);
 }
 
 /** @internal - for tests only. Creates a fresh in-memory database. */
@@ -148,6 +188,7 @@ export function _initTestDatabase(): void {
   db = new Database(':memory:');
   db.pragma('journal_mode = WAL');
   createSchema(db);
+  runMigrations(db);
 }
 
 export function getSession(chatId: string): string | undefined {
@@ -336,6 +377,7 @@ export function resumeScheduledTask(id: string): void {
 
 // ── Dispatch Queue ──────────────────────────────────────────────────
 
+export type ModelTier = 'opus' | 'sonnet' | 'haiku';
 export type WorkerType = 'starscream' | 'ravage' | 'soundwave' | 'astrotrain' | 'default';
 export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed';
 
@@ -524,6 +566,15 @@ export interface SessionTokenSummary {
 
 // ── Memory Vectors ──────────────────────────────────────────────────
 
+export type MemoryCategory =
+  | 'decision'
+  | 'preference'
+  | 'project_state'
+  | 'action_item'
+  | 'technical_detail'
+  | 'person_info'
+  | 'insight';
+
 export interface MemoryVector {
   id: number;
   chat_id: string;
@@ -534,6 +585,48 @@ export interface MemoryVector {
   created_at: number;
   accessed_at: number;
   source_log_ids: string | null;
+  category: MemoryCategory | null;
+  tags: string | null;
+  people: string | null;
+  is_action_item: number;
+  confidence: number;
+}
+
+export interface MemoryVectorMetadata {
+  category: MemoryCategory | null;
+  tags: string[];
+  people: string[];
+  isActionItem: boolean;
+  confidence: number;
+}
+
+export interface SaveMemoryVectorOptions {
+  category?: MemoryCategory;
+  tags?: string[];
+  people?: string[];
+  isActionItem?: boolean;
+  confidence?: number;
+}
+
+/** Parse JSON-encoded tags/people and convert is_action_item to boolean. */
+export function parseVectorMetadata(row: MemoryVector): MemoryVectorMetadata {
+  let tags: string[] = [];
+  let people: string[] = [];
+
+  if (row.tags) {
+    try { tags = JSON.parse(row.tags); } catch { /* ignore */ }
+  }
+  if (row.people) {
+    try { people = JSON.parse(row.people); } catch { /* ignore */ }
+  }
+
+  return {
+    category: row.category,
+    tags,
+    people,
+    isActionItem: row.is_action_item === 1,
+    confidence: row.confidence ?? 1.0,
+  };
 }
 
 export function getMemoryVectors(chatId: string): MemoryVector[] {
@@ -548,12 +641,24 @@ export function saveMemoryVector(
   embedding: Buffer,
   sourceLogIds?: string,
   sourceType = 'extraction',
+  opts?: SaveMemoryVectorOptions,
 ): void {
   const now = Math.floor(Date.now() / 1000);
+  const category = opts?.category ?? null;
+  const tags = opts?.tags ? JSON.stringify(opts.tags) : null;
+  const people = opts?.people ? JSON.stringify(opts.people) : null;
+  const isActionItem = opts?.isActionItem ? 1 : 0;
+  const confidence = opts?.confidence ?? 1.0;
+
   db.prepare(
-    `INSERT INTO memory_vectors (chat_id, content, source_type, embedding, salience, created_at, accessed_at, source_log_ids)
-     VALUES (?, ?, ?, ?, 1.0, ?, ?, ?)`,
-  ).run(chatId, content, sourceType, embedding, now, now, sourceLogIds ?? null);
+    `INSERT INTO memory_vectors
+       (chat_id, content, source_type, embedding, salience, created_at, accessed_at, source_log_ids,
+        category, tags, people, is_action_item, confidence)
+     VALUES (?, ?, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    chatId, content, sourceType, embedding, now, now, sourceLogIds ?? null,
+    category, tags, people, isActionItem, confidence,
+  );
 }
 
 export function touchMemoryVector(id: number): void {
@@ -569,6 +674,36 @@ export function decayMemoryVectors(): void {
     'UPDATE memory_vectors SET salience = salience * 0.98 WHERE created_at < ?',
   ).run(oneDayAgo);
   db.prepare('DELETE FROM memory_vectors WHERE salience < 0.1').run();
+}
+
+// ── Memory Vector Queries ────────────────────────────────────────────
+
+export function getMemoryVectorsByCategory(
+  chatId: string,
+  category: MemoryCategory,
+  limit = 10,
+): MemoryVector[] {
+  return db
+    .prepare(
+      'SELECT * FROM memory_vectors WHERE chat_id = ? AND category = ? ORDER BY accessed_at DESC LIMIT ?',
+    )
+    .all(chatId, category, limit) as MemoryVector[];
+}
+
+export function getActionItemVectors(chatId: string, limit = 10): MemoryVector[] {
+  return db
+    .prepare(
+      'SELECT * FROM memory_vectors WHERE chat_id = ? AND is_action_item = 1 ORDER BY created_at DESC LIMIT ?',
+    )
+    .all(chatId, limit) as MemoryVector[];
+}
+
+export function searchVectorsByPerson(chatId: string, person: string, limit = 10): MemoryVector[] {
+  return db
+    .prepare(
+      `SELECT * FROM memory_vectors WHERE chat_id = ? AND people LIKE ? ORDER BY accessed_at DESC LIMIT ?`,
+    )
+    .all(chatId, `%"${person}"%`, limit) as MemoryVector[];
 }
 
 // ── Extraction State ────────────────────────────────────────────────

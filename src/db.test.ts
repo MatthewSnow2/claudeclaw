@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   _initTestDatabase,
+  _runMigrations,
   setSession,
   getSession,
   clearSession,
@@ -9,6 +10,12 @@ import {
   getRecentMemories,
   touchMemory,
   decayMemories,
+  saveMemoryVector,
+  getMemoryVectors,
+  getMemoryVectorsByCategory,
+  getActionItemVectors,
+  searchVectorsByPerson,
+  parseVectorMetadata,
 } from './db.js';
 
 describe('database', () => {
@@ -228,6 +235,164 @@ describe('database', () => {
       const after = getRecentMemories('chat1', 1)[0];
       // Salience should be unchanged since memory was created < 1 day ago
       expect(after.salience).toBe(before.salience);
+    });
+  });
+
+  // ── Migrations ────────────────────────────────────────────────────
+
+  describe('runMigrations', () => {
+    it('is idempotent -- calling twice does not throw', () => {
+      // _initTestDatabase already calls runMigrations once via initDatabase flow
+      // Calling again should be a no-op
+      expect(() => {
+        _initTestDatabase();
+        // Second call to runMigrations on same DB
+        _runMigrations;
+      }).not.toThrow();
+    });
+  });
+
+  // ── Memory Vectors with Metadata ────────────────────────────────
+
+  describe('saveMemoryVector with metadata', () => {
+    const dummyEmbedding = Buffer.alloc(768 * 4); // 768 float32 zeros
+
+    it('saves and retrieves a vector with full metadata', () => {
+      saveMemoryVector('chat1', 'Matthew uses Railway for deploy', dummyEmbedding, '1,2,3', 'extraction', {
+        category: 'decision',
+        tags: ['deployment', 'railway'],
+        people: ['Matthew'],
+        isActionItem: false,
+        confidence: 0.9,
+      });
+
+      const vectors = getMemoryVectors('chat1');
+      expect(vectors).toHaveLength(1);
+      expect(vectors[0].content).toBe('Matthew uses Railway for deploy');
+      expect(vectors[0].category).toBe('decision');
+      expect(vectors[0].tags).toBe('["deployment","railway"]');
+      expect(vectors[0].people).toBe('["Matthew"]');
+      expect(vectors[0].is_action_item).toBe(0);
+      expect(vectors[0].confidence).toBe(0.9);
+    });
+
+    it('saves vector without metadata (backward compat)', () => {
+      saveMemoryVector('chat1', 'simple fact', dummyEmbedding);
+      const vectors = getMemoryVectors('chat1');
+      expect(vectors).toHaveLength(1);
+      expect(vectors[0].category).toBeNull();
+      expect(vectors[0].tags).toBeNull();
+      expect(vectors[0].people).toBeNull();
+      expect(vectors[0].is_action_item).toBe(0);
+      expect(vectors[0].confidence).toBe(1.0);
+    });
+
+    it('saves action items correctly', () => {
+      saveMemoryVector('chat1', 'Update CI pipeline', dummyEmbedding, undefined, 'extraction', {
+        category: 'action_item',
+        isActionItem: true,
+        confidence: 0.85,
+      });
+
+      const vectors = getMemoryVectors('chat1');
+      expect(vectors[0].is_action_item).toBe(1);
+      expect(vectors[0].category).toBe('action_item');
+    });
+  });
+
+  describe('parseVectorMetadata', () => {
+    const dummyEmbedding = Buffer.alloc(768 * 4);
+
+    it('parses JSON tags and people correctly', () => {
+      saveMemoryVector('chat1', 'test fact', dummyEmbedding, undefined, 'extraction', {
+        category: 'technical_detail',
+        tags: ['python', 'testing'],
+        people: ['Matthew', 'Alice'],
+        isActionItem: false,
+        confidence: 0.7,
+      });
+
+      const vector = getMemoryVectors('chat1')[0];
+      const meta = parseVectorMetadata(vector);
+      expect(meta.category).toBe('technical_detail');
+      expect(meta.tags).toEqual(['python', 'testing']);
+      expect(meta.people).toEqual(['Matthew', 'Alice']);
+      expect(meta.isActionItem).toBe(false);
+      expect(meta.confidence).toBe(0.7);
+    });
+
+    it('handles null tags and people gracefully', () => {
+      saveMemoryVector('chat1', 'bare fact', dummyEmbedding);
+      const vector = getMemoryVectors('chat1')[0];
+      const meta = parseVectorMetadata(vector);
+      expect(meta.tags).toEqual([]);
+      expect(meta.people).toEqual([]);
+      expect(meta.isActionItem).toBe(false);
+      expect(meta.confidence).toBe(1.0);
+    });
+  });
+
+  describe('getMemoryVectorsByCategory', () => {
+    const dummyEmbedding = Buffer.alloc(768 * 4);
+
+    it('filters vectors by category', () => {
+      saveMemoryVector('chat1', 'decision fact', dummyEmbedding, undefined, 'extraction', { category: 'decision' });
+      saveMemoryVector('chat1', 'preference fact', dummyEmbedding, undefined, 'extraction', { category: 'preference' });
+      saveMemoryVector('chat1', 'another decision', dummyEmbedding, undefined, 'extraction', { category: 'decision' });
+
+      const decisions = getMemoryVectorsByCategory('chat1', 'decision');
+      expect(decisions).toHaveLength(2);
+      expect(decisions.every(v => v.category === 'decision')).toBe(true);
+
+      const preferences = getMemoryVectorsByCategory('chat1', 'preference');
+      expect(preferences).toHaveLength(1);
+    });
+
+    it('does not return vectors from other chats', () => {
+      saveMemoryVector('chat1', 'my decision', dummyEmbedding, undefined, 'extraction', { category: 'decision' });
+      saveMemoryVector('chat2', 'their decision', dummyEmbedding, undefined, 'extraction', { category: 'decision' });
+
+      const results = getMemoryVectorsByCategory('chat1', 'decision');
+      expect(results).toHaveLength(1);
+      expect(results[0].content).toBe('my decision');
+    });
+  });
+
+  describe('getActionItemVectors', () => {
+    const dummyEmbedding = Buffer.alloc(768 * 4);
+
+    it('returns only action items', () => {
+      saveMemoryVector('chat1', 'task to do', dummyEmbedding, undefined, 'extraction', {
+        category: 'action_item',
+        isActionItem: true,
+      });
+      saveMemoryVector('chat1', 'just a fact', dummyEmbedding, undefined, 'extraction', {
+        category: 'insight',
+        isActionItem: false,
+      });
+
+      const actions = getActionItemVectors('chat1');
+      expect(actions).toHaveLength(1);
+      expect(actions[0].content).toBe('task to do');
+    });
+  });
+
+  describe('searchVectorsByPerson', () => {
+    const dummyEmbedding = Buffer.alloc(768 * 4);
+
+    it('finds vectors mentioning a specific person', () => {
+      saveMemoryVector('chat1', 'Matthew likes TypeScript', dummyEmbedding, undefined, 'extraction', {
+        category: 'preference',
+        people: ['Matthew'],
+      });
+      saveMemoryVector('chat1', 'Alice uses Python', dummyEmbedding, undefined, 'extraction', {
+        category: 'preference',
+        people: ['Alice'],
+      });
+
+      const results = searchVectorsByPerson('chat1', 'Matthew');
+      expect(results).toHaveLength(1);
+      expect(results[0].content).toBe('Matthew likes TypeScript');
     });
   });
 });

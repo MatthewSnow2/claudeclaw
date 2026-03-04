@@ -111,16 +111,23 @@ Validation script: `claudeclaw/scripts/validate_comfyui_env.py`
 - Note: Wan 2.2 uses dual-expert MoE (high-noise + low-noise models). Requires 32GB+ system RAM for offloading.
 - Note: SVD xt/AnimateDiff now legacy. Seedream 5.0 Lite is cloud-only, skip for video gen.
 
-### VisionClaw (Meta Ray-Ban Smart Glasses) -- UNPARKED
-DAT SDK now available via GitHub Packages. Blocker cleared.
+### VisionClaw (Meta Ray-Ban Smart Glasses) -- ACTIVE
+DAT SDK now available via GitHub Packages. Target: Android.
 - Reference: https://github.com/sseanliu/VisionClaw
-- Android: API 34+, Android Studio, GitHub PAT with read:packages for DAT SDK auth
-- iOS: iOS 17+, Xcode 15+
-- Both need: Gemini API key (already have GOOGLE_API_KEY)
-- [ ] Clone repo and review current codebase
-- [ ] Set up DAT SDK access (GitHub PAT with read:packages)
-- [ ] Determine target platform (Android or iOS -- Matthew's phone?)
-- [ ] Build and test sample app
+- Cloned to: `/home/apexaipc/projects/visionclaw/`
+- Android project: `samples/CameraAccessAndroid/`
+- APK: `app/build/outputs/apk/debug/app-debug.apk` (146MB)
+- Auth: `~/.env.shared` GITHUB_TOKEN has write:packages (implies read:packages)
+- Secrets.kt: Gemini API key configured from env.shared
+- ProBook: Android CLI tools + SDK installed at `~/android-sdk/`, Java 17, Gradle 8.14.1
+- AlienPC: Android Studio installer downloaded to `C:\Users\matth\Downloads\android-studio-installer.exe`
+- [x] Clone repo and review current codebase
+- [x] Set up DAT SDK access (GitHub PAT with read:packages via env.shared)
+- [x] Determine target platform -- Android
+- [x] Build debug APK on ProBook (CLI)
+- [ ] Install Android Studio on AlienPC (installer ready)
+- [ ] Sideload APK to Android phone via ADB
+- [ ] Test glasses connection + camera stream
 - [ ] Integrate with OpenClaw/ClawdBot for agentic capabilities
 
 ---

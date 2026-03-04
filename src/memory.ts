@@ -150,7 +150,8 @@ export async function buildMemoryContext(
           if (seenContent.has(key)) continue;
           seenContent.add(key);
           touchMemoryVector(v.id);
-          lines.push(`- ${v.content} (vector)`);
+          const label = v.category ? `vector:${v.category}` : 'vector';
+          lines.push(`- ${v.content} (${label})`);
         }
       }
     }
