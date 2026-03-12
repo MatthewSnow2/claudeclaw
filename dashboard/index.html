@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EAC Command Center - M2AI</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
@@ -329,6 +330,28 @@
   .pipeline-card.expanded .pl-desc,
   .pipeline-card.expanded .pl-shelved-info { display: block; }
 
+  /* Pipeline card interactive elements */
+  .pipeline-card .pl-actions {
+    display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center;
+  }
+  .pipeline-card .pl-actions .pl-action-btn {
+    font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
+    font-family: 'Inter', sans-serif; font-weight: 500;
+  }
+  .pipeline-card .pl-actions .pl-action-btn:hover { background: var(--bg); color: var(--text); }
+  .pipeline-card .pl-actions .pl-action-btn.kill { border-color: var(--error); color: var(--error); }
+  .pipeline-card .pl-actions .pl-action-btn.kill:hover { background: var(--error-bg); }
+  .pipeline-card .drag-handle {
+    cursor: grab; color: var(--text-secondary); font-size: 14px; margin-right: 8px;
+    user-select: none; opacity: 0.4; transition: opacity 0.15s;
+  }
+  .pipeline-card:hover .drag-handle { opacity: 1; }
+  .pipeline-card .pl-header { display: flex; align-items: center; }
+  .pipeline-card .pl-header .pl-title { flex: 1; }
+  .pipeline-card.sortable-ghost { opacity: 0.4; }
+  .pipeline-card.sortable-chosen { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+
   /* Footer */
   .footer { text-align: center; padding: 16px; font-size: 12px; color: var(--text-secondary); }
 
@@ -389,6 +412,39 @@
   .topic-bar-track { flex: 1; height: 20px; background: #F3F4F6; border-radius: 4px; overflow: hidden; }
   .topic-bar-fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.3s; display: flex; align-items: center; padding-left: 8px; font-size: 11px; color: white; font-weight: 600; }
   .topic-stats { font-size: 11px; color: var(--text-secondary); width: 100px; text-align: right; flex-shrink: 0; }
+
+  /* Task Management Buttons */
+  .task-btn {
+    border: 1px solid var(--border); background: var(--card); border-radius: 4px;
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 14px; color: var(--text-secondary); transition: all 0.15s;
+  }
+  .task-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .task-btn-pause:hover { border-color: var(--warning); color: var(--warning); }
+  .task-btn-resume:hover { border-color: var(--ok); color: var(--ok); }
+  .task-btn-delete:hover { border-color: var(--error); color: var(--error); background: var(--error-bg); }
+  .task-btn:disabled { opacity: 0.4; pointer-events: none; }
+
+  /* Hive Mind Feed */
+  .hive-event {
+    display: flex; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #F3F4F6;
+    transition: background 0.15s;
+  }
+  .hive-event:hover { background: #F9FAFB; }
+  .hive-event:last-child { border-bottom: none; }
+  .hive-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+  .hive-worker { font-weight: 600; font-size: 13px; }
+  .hive-summary { font-size: 13px; color: var(--text); }
+  .hive-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+  .hive-filter-bar { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .hive-filter-btn {
+    background: none; border: 1px solid var(--border); border-radius: 16px;
+    padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--text-secondary);
+    font-family: 'Inter', sans-serif; transition: all 0.15s;
+  }
+  .hive-filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .hive-filter-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .hive-empty { padding: 40px; text-align: center; color: var(--text-secondary); font-size: 14px; }
 </style>
 </head>
 <body>
@@ -413,6 +469,7 @@
   <button class="tab-btn" data-tab="hll" id="tab-btn-hll">Soundwave / HLL<span class="tab-badge warning" id="badge-hll" style="display:none"></span></button>
   <button class="tab-btn" data-tab="strategy" id="tab-btn-strategy">Strategy<span class="tab-badge info" id="badge-strategy" style="display:none"></span></button>
   <button class="tab-btn" data-tab="pipeline" id="tab-btn-pipeline">Pipeline<span class="tab-badge accent" id="badge-pipeline" style="display:none"></span></button>
+  <button class="tab-btn" data-tab="hivemind" id="tab-btn-hivemind">Hive Mind<span class="tab-badge info" id="badge-hivemind" style="display:none"></span></button>
 </nav>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
@@ -719,6 +776,36 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- Tab 6: Hive Mind -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-hivemind">
+  <div class="summary-bar" id="hive-stats">
+    <div class="stat-card ok"><div class="number" id="hive-total">--</div><div class="label">Events (24h)</div></div>
+    <div class="stat-card info"><div class="number" id="hive-workers">--</div><div class="label">Active Workers</div></div>
+    <div class="stat-card warning"><div class="number" id="hive-failed">--</div><div class="label">Failures (24h)</div></div>
+    <div class="stat-card accent"><div class="number" id="hive-latest">--</div><div class="label">Last Event</div></div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-header">
+      <h3>Activity Feed</h3>
+      <button class="refresh-btn" onclick="loadHiveMind()">refresh</button>
+    </div>
+    <div class="section-body" style="padding:0;">
+      <div class="hive-filter-bar" style="padding:12px 14px 0;">
+        <button class="hive-filter-btn active" onclick="filterHive(this, '')" data-worker="">All</button>
+        <button class="hive-filter-btn" onclick="filterHive(this, 'starscream')" data-worker="starscream">Starscream</button>
+        <button class="hive-filter-btn" onclick="filterHive(this, 'soundwave')" data-worker="soundwave">Soundwave</button>
+        <button class="hive-filter-btn" onclick="filterHive(this, 'ravage')" data-worker="ravage">Ravage</button>
+        <button class="hive-filter-btn" onclick="filterHive(this, 'astrotrain')" data-worker="astrotrain">Astrotrain</button>
+        <button class="hive-filter-btn" onclick="filterHive(this, 'default')" data-worker="default">Data</button>
+      </div>
+      <div id="hive-feed"></div>
+    </div>
+  </div>
+</div>
+
 <div class="footer">EAC Command Center v3 -- M2AI -- Live polling (30s)</div>
 
 <script>
@@ -814,6 +901,7 @@ function render() {
   renderTab3();
   renderTab4();
   renderTab5();
+  loadHiveMind();
   renderBadges();
 }
 
@@ -959,11 +1047,17 @@ function renderTab1() {
   // ── Scheduled Tasks (bot-level) ──
   const stBody = document.getElementById('scheduled-tasks-body');
   stBody.innerHTML = (agents.scheduled_tasks || []).map(t => `
-    <div class="item" onclick="toggleItem(this)">
+    <div class="item" style="display:flex;align-items:center;gap:8px;">
       <div class="item-dot ${t.status === 'active' ? 'ok' : 'warning'}"></div>
-      <div class="item-content">
+      <div class="item-content" style="flex:1;" onclick="toggleItem(this.parentElement)">
         <div class="item-text">${t.prompt_preview}</div>
         <div class="item-detail">Schedule: ${t.schedule} | Status: ${t.status}${t.next_run ? ' | Next: ' + new Date(t.next_run * 1000).toLocaleString() : ''}</div>
+      </div>
+      <div class="task-actions" style="display:flex;gap:4px;flex-shrink:0;">
+        ${t.status === 'active'
+          ? `<button onclick="taskAction('pause','${t.id}')" class="task-btn task-btn-pause" title="Pause">&#9646;&#9646;</button>`
+          : `<button onclick="taskAction('resume','${t.id}')" class="task-btn task-btn-resume" title="Resume">&#9654;</button>`}
+        <button onclick="taskAction('delete','${t.id}')" class="task-btn task-btn-delete" title="Delete">&times;</button>
       </div>
     </div>
   `).join('') || '<div class="item"><div class="item-content"><div class="item-text" style="color:var(--text-secondary)">No scheduled tasks</div></div></div>';
@@ -1618,8 +1712,12 @@ function renderContentInsights(insights) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Tab 5: Pipeline
+// Tab 5: Pipeline (Interactive)
 // ═══════════════════════════════════════════════════════════════════════
+
+const PIPELINE_LANES = ['active', 'queued', 'research', 'shelved', 'killed'];
+let sortableInstances = [];
+
 function renderTab5() {
   const pl = reportData.tabs?.pipeline_tab;
   if (!pl) return;
@@ -1628,8 +1726,6 @@ function renderTab5() {
   const activeCount = stats.active || 0;
   const queuedCount = stats.queued || 0;
   const researchCount = stats.research || 0;
-  const shelvedCount = stats.shelved || 0;
-  const killedCount = stats.killed || 0;
   const completedCount = stats.completed || 0;
 
   // Stats bar
@@ -1659,10 +1755,9 @@ function renderTab5() {
   `;
 
   // Render each swim lane
-  const lanes = ['active', 'queued', 'research', 'shelved', 'killed'];
   const items = pl.items || [];
 
-  lanes.forEach(lane => {
+  PIPELINE_LANES.forEach(lane => {
     const laneItems = items.filter(i => i.status === lane);
     const badge = document.getElementById('pl-' + lane + '-badge');
     badge.textContent = laneItems.length;
@@ -1675,14 +1770,31 @@ function renderTab5() {
       if (i.effort_hours) tags.push(i.effort_hours + 'h');
       if (i.deadline) tags.push('<span class="deadline-tag">' + i.deadline + '</span>');
 
-      return '<div class="pipeline-card ' + lane + '" onclick="this.classList.toggle(\'expanded\')">' +
-        '<div class="pl-title">' + i.title + '</div>' +
+      // Build action buttons: move to every other lane except current
+      const moveTargets = PIPELINE_LANES.filter(l => l !== lane && l !== 'killed');
+      const moveButtons = moveTargets.map(t =>
+        '<button class="pl-action-btn" onclick="event.stopPropagation(); plMoveItem(\'' + i.id + '\', \'' + t + '\')">' + capitalize(t) + '</button>'
+      ).join('');
+
+      const killBtn = lane !== 'killed'
+        ? '<button class="pl-action-btn kill" onclick="event.stopPropagation(); plKillItem(\'' + i.id + '\', \'' + escapeHtml(i.title) + '\')">Kill</button>'
+        : '';
+
+      return '<div class="pipeline-card ' + lane + '" data-id="' + i.id + '" onclick="this.classList.toggle(\'expanded\')">' +
+        '<div class="pl-header">' +
+          '<span class="drag-handle" title="Drag to reorder">&#9776;</span>' +
+          '<div class="pl-title">' + i.title + '</div>' +
+        '</div>' +
         '<div class="pl-meta">' + tags.join('') + '</div>' +
         (i.description ? '<div class="pl-desc">' + i.description + '</div>' : '') +
         (i.shelved_reason ? '<div class="pl-shelved-info">Reason: ' + i.shelved_reason + (i.resume_trigger ? '<br>Resume: ' + i.resume_trigger : '') + '</div>' : '') +
+        '<div class="pl-actions">' + moveButtons + killBtn + '</div>' +
       '</div>';
     }).join('') : '<div class="empty-state">No items</div>';
   });
+
+  // Initialize SortableJS on each lane body
+  initPipelineSortables();
 
   // Recent decisions
   const decBody = document.getElementById('pl-decisions-body');
@@ -1699,9 +1811,199 @@ function renderTab5() {
   }).join('') : '<div class="empty-state">No decisions recorded yet</div>';
 }
 
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ── Pipeline Sortable ─────────────────────────────────────────────────
+
+function initPipelineSortables() {
+  // Destroy previous instances
+  sortableInstances.forEach(s => s.destroy());
+  sortableInstances = [];
+
+  PIPELINE_LANES.forEach(lane => {
+    const body = document.getElementById('pl-' + lane + '-body');
+    if (!body || body.querySelector('.empty-state')) return;
+
+    const instance = new Sortable(body, {
+      group: lane, // Only reorder within the same lane
+      animation: 150,
+      handle: '.drag-handle',
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      onEnd: function(evt) {
+        if (evt.oldIndex === evt.newIndex) return;
+        const cards = body.querySelectorAll('.pipeline-card');
+        const items = [];
+        cards.forEach((card, idx) => {
+          items.push({ id: card.dataset.id, sort_order: idx });
+        });
+        plSaveOrder(items);
+      }
+    });
+    sortableInstances.push(instance);
+  });
+}
+
+// ── Pipeline API Calls ───────────────────────────────────────────────
+
+async function plMoveItem(id, newStatus) {
+  try {
+    const resp = await fetch('/api/pipeline/' + id + '/status', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus, reason: 'Dashboard triage' })
+    });
+    const data = await resp.json();
+    if (!data.ok) { console.error('Move failed:', data.error); return; }
+    await loadData(); // Refresh immediately
+  } catch (err) {
+    console.error('Pipeline move error:', err);
+  }
+}
+
+async function plKillItem(id, title) {
+  if (!confirm('Kill "' + title + '"?\n\nThis moves it to the Killed lane.')) return;
+  await plMoveItem(id, 'killed');
+}
+
+async function plSaveOrder(items) {
+  try {
+    await fetch('/api/pipeline/order', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    });
+    // No full refresh needed for reorder - the DOM is already updated by SortableJS
+  } catch (err) {
+    console.error('Pipeline reorder error:', err);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Tab Badges
 // ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+// Task Management (Pause / Resume / Delete)
+// ═══════════════════════════════════════════════════════════════════════
+async function taskAction(action, taskId) {
+  const method = action === 'delete' ? 'DELETE' : 'POST';
+  const url = action === 'delete'
+    ? `/api/tasks/${taskId}`
+    : `/api/tasks/${taskId}/${action}`;
+
+  if (action === 'delete' && !confirm('Delete this scheduled task? This cannot be undone.')) return;
+
+  try {
+    const resp = await fetch(url, { method });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // Refresh report data to reflect change
+    await loadData();
+  } catch (err) {
+    console.error('Task action failed:', err);
+    alert('Failed to ' + action + ' task: ' + err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Hive Mind
+// ═══════════════════════════════════════════════════════════════════════
+const WORKER_COLORS = {
+  starscream: '#EC4899',
+  soundwave: '#3B82F6',
+  ravage: '#10B981',
+  astrotrain: '#F59E0B',
+  default: '#6366F1',
+};
+
+let hiveMindData = [];
+let hiveFilter = '';
+
+async function loadHiveMind() {
+  try {
+    const q = hiveFilter ? `?worker=${hiveFilter}&limit=50` : '?limit=50';
+    const resp = await fetch(`/api/hive-mind${q}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    hiveMindData = data.entries || [];
+    renderHiveMind();
+  } catch (err) {
+    console.error('Hive mind load failed:', err);
+  }
+}
+
+function filterHive(btn, worker) {
+  document.querySelectorAll('.hive-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  hiveFilter = worker;
+  loadHiveMind();
+}
+
+function renderHiveMind() {
+  const feed = document.getElementById('hive-feed');
+  if (!hiveMindData.length) {
+    feed.innerHTML = '<div class="hive-empty">No activity yet. Events appear here as workers complete tasks.</div>';
+    updateHiveStats([]);
+    return;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  feed.innerHTML = hiveMindData.map(e => {
+    const ago = formatAgo(now - e.created_at);
+    const color = WORKER_COLORS[e.worker] || '#888';
+    const workerName = e.worker === 'default' ? 'Data' : capitalize(e.worker);
+    const icon = e.event_type === 'task_failed' ? '&#10060;' : '&#9679;';
+    return `
+      <div class="hive-event">
+        <div class="hive-dot" style="background:${color};"></div>
+        <div style="flex:1;">
+          <div><span class="hive-worker" style="color:${color};">${workerName}</span> <span class="hive-summary">${escapeHtml(e.summary)}</span></div>
+          <div class="hive-meta">${ago}${e.detail ? ' | ' + escapeHtml(e.detail) : ''}${e.cost_usd > 0 ? ' | $' + e.cost_usd.toFixed(2) : ''}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  updateHiveStats(hiveMindData);
+}
+
+function updateHiveStats(entries) {
+  const now = Math.floor(Date.now() / 1000);
+  const dayAgo = now - 86400;
+  const recent = entries.filter(e => e.created_at > dayAgo);
+  const workers = new Set(recent.map(e => e.worker));
+  const failures = recent.filter(e => e.event_type === 'task_failed').length;
+
+  document.getElementById('hive-total').textContent = recent.length;
+  document.getElementById('hive-workers').textContent = workers.size;
+  document.getElementById('hive-failed').textContent = failures;
+
+  if (entries.length > 0) {
+    const latestAgo = now - entries[0].created_at;
+    document.getElementById('hive-latest').textContent = formatAgo(latestAgo);
+  } else {
+    document.getElementById('hive-latest').textContent = '--';
+  }
+
+  // Badge
+  const hb = document.getElementById('badge-hivemind');
+  if (recent.length > 0) { hb.textContent = recent.length; hb.style.display = 'inline'; }
+  else hb.style.display = 'none';
+}
+
+function formatAgo(seconds) {
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+  if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+  return Math.floor(seconds / 86400) + 'd ago';
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
 function renderBadges() {
   // Agents badge: non-online count
   const procs = reportData.tabs?.agents?.pm2_processes || [];

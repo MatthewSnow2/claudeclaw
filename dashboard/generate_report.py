@@ -853,11 +853,17 @@ def get_pipeline_data():
             if row[0] in result["stats"]:
                 result["stats"][row[0]] = row[1]
 
+        # Check if sort_order column exists
+        col_names = [c[1] for c in db.execute("PRAGMA table_info('pipeline_items')").fetchall()]
+        has_sort_order = 'sort_order' in col_names
+        sort_order_col = ", sort_order" if has_sort_order else ""
+        sort_order_clause = "COALESCE(sort_order, 0) ASC," if has_sort_order else ""
+
         # All non-completed items (active, queued, research, shelved, killed)
-        items = db.execute("""
+        items = db.execute(f"""
             SELECT id, title, description, status, tier, worker_type, source,
                    effort_hours, deadline, depends_on, created_at, updated_at,
-                   shelved_reason, resume_trigger
+                   shelved_reason, resume_trigger{sort_order_col}
             FROM pipeline_items
             WHERE status != 'completed'
             ORDER BY
@@ -868,6 +874,7 @@ def get_pipeline_data():
                     WHEN 'shelved' THEN 4
                     WHEN 'killed' THEN 5
                 END,
+                {sort_order_clause}
                 CASE tier
                     WHEN 'p1' THEN 1
                     WHEN 'p2' THEN 2
@@ -878,7 +885,7 @@ def get_pipeline_data():
         """).fetchall()
 
         for row in items:
-            result["items"].append({
+            item_data = {
                 "id": row[0],
                 "title": row[1],
                 "description": row[2],
@@ -893,7 +900,10 @@ def get_pipeline_data():
                 "updated_at": row[11],
                 "shelved_reason": row[12],
                 "resume_trigger": row[13],
-            })
+            }
+            if has_sort_order:
+                item_data["sort_order"] = row[14] or 0
+            result["items"].append(item_data)
 
         # Effort totals
         effort_row = db.execute(

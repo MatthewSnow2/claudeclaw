@@ -90,5 +90,22 @@ module.exports = {
       min_uptime: 60000,
       exp_backoff_restart_delay: 1000,
     },
+
+    // Dashboard API server (serves static files + pipeline write endpoints)
+    // Replaces the old `python3 -m http.server 8080` process (eac-dashboard)
+    {
+      name: 'eac-api',
+      script: 'dist/api-server.js',
+      cwd: __dirname,
+      interpreter: 'node',
+      env: {
+        NODE_ENV: 'production',
+        PORT: '8080',
+      },
+      restart_delay: 5000,
+      max_restarts: 10,
+      min_uptime: 60000,
+      exp_backoff_restart_delay: 1000,
+    },
   ],
 };

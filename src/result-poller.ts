@@ -1,8 +1,9 @@
 import type { Api, RawApi } from 'grammy';
 
-import { getPendingResults, markNotified } from './db.js';
+import { getPendingResults, markNotified, reDispatchTask } from './db.js';
 import { logger } from './logger.js';
 import { redactSecrets, formatForTelegram, splitMessage } from './bot.js';
+import { scoreResult, RE_DISPATCH_THRESHOLD } from './compliance.js';
 
 const POLL_INTERVAL_MS = 10_000; // 10 seconds
 
@@ -30,6 +31,22 @@ async function pollResults(botApi: Api<RawApi>): Promise<void> {
 
       try {
         if (task.status === 'completed' && task.result) {
+          // Compliance gate: score result quality before posting
+          const { score, issues } = scoreResult(task);
+          if (score < RE_DISPATCH_THRESHOLD) {
+            logger.warn(
+              { taskId: task.id, score, issues, workerType: task.worker_type },
+              'Compliance score below threshold -- re-dispatching task',
+            );
+            reDispatchTask(task.id);
+            await botApi.sendMessage(
+              chatId,
+              `${label} output was too low-quality (score: ${score}). Re-dispatching.`,
+              { parse_mode: 'HTML' },
+            );
+            continue;
+          }
+
           const elapsed = task.completed_at && task.started_at
             ? task.completed_at - task.started_at
             : null;

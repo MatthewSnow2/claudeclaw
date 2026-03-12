@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 import { Api, Bot, Context, InputFile, RawApi } from 'grammy';
 
 import {
@@ -9,7 +11,7 @@ import {
 } from './config.js';
 import { type UsageInfo } from './agent.js';
 import { classifyMessage } from './classifier.js';
-import { clearSession, enqueueTask, getRecentConversation, getRecentMemories, getSession, getSessionTokenUsage, isMessageProcessed, markMessageProcessed, pruneProcessedMessages, saveTokenUsage, setSession } from './db.js';
+import { addSessionDirective, clearSession, clearSessionDirectives, enqueueTask, getRecentConversation, getRecentMemories, getSession, getSessionTokenUsage, isMessageProcessed, markMessageProcessed, pruneProcessedMessages, saveTokenUsage, setActiveTopic, setSession } from './db.js';
 import { logger } from './logger.js';
 import { downloadMedia, buildPhotoMessage, buildDocumentMessage, buildVideoMessage } from './media.js';
 import { buildMemoryContext, saveConversationTurn } from './memory.js';
@@ -27,27 +29,51 @@ import {
 const voiceEnabledChats = new Set<string>();
 
 // ── Context window tracking ──────────────────────────────────────────
-// Track the last known input_tokens per chat so we can warn proactively.
-// Claude Code's context window is ~200k tokens. Warn at 75%.
-const CONTEXT_WARN_THRESHOLD = 150_000;
+// Two-tier warning: 75% (advisory) and 90% (critical). Each fires once per session.
+// Compaction alerts always fire (they indicate data loss).
+const CONTEXT_WARN_75 = 150_000;  // 75% of 200k
+const CONTEXT_WARN_90 = 180_000;  // 90% of 200k
+const CONTEXT_MAX     = 200_000;
+
+// Track which thresholds have already fired per chat to avoid spamming.
+// Resets on /newchat (new session) or bot restart.
+const contextWarnFired = new Map<string, Set<number>>();
+
+function resetContextWarnings(chatId: string): void {
+  contextWarnFired.delete(chatId);
+}
 
 /**
  * Check if context usage is getting high and return a warning string, or null.
+ * Each threshold fires only once per session. Compaction always fires.
  */
-function checkContextWarning(usage: UsageInfo): string | null {
+function checkContextWarning(usage: UsageInfo, chatId: string): string | null {
   if (usage.didCompact) {
-    return 'Context window was auto-compacted this turn. Some earlier conversation may have been summarized. Consider /newchat + /respin if things feel off.';
+    // Compaction happened -- reset thresholds (context just shrank).
+    resetContextWarnings(chatId);
+    return 'Context window was auto-compacted this turn. Some earlier context was summarized. Consider checkpoint + /newchat if things feel off.';
   }
 
-  // Use the last single API call's cache read -- this reflects actual context size.
-  // The cumulative cacheReadInputTokens overcounts on multi-step tool-use turns
-  // (each step re-reads the full cache, so 3 steps = 3x the real size).
-  if (usage.lastCallCacheRead > CONTEXT_WARN_THRESHOLD) {
-    const pct = Math.round((usage.lastCallCacheRead / 200_000) * 100);
-    return `Context window at ~${pct}%. Getting close to the limit. Consider /newchat + /respin soon.`;
+  const tokens = usage.lastCallCacheRead;
+  if (tokens <= CONTEXT_WARN_75) return null;
+
+  const fired = contextWarnFired.get(chatId) ?? new Set();
+  const pct = Math.round((tokens / CONTEXT_MAX) * 100);
+  const remaining = Math.max(0, CONTEXT_MAX - tokens);
+  const remainK = Math.round(remaining / 1000);
+
+  let warning: string | null = null;
+
+  if (tokens > CONTEXT_WARN_90 && !fired.has(90)) {
+    fired.add(90);
+    warning = `Context window at ${pct}% (~${remainK}k tokens left). Compaction imminent. Run checkpoint + /newchat now, or switch to /model sonnet[1m] to extend to 1M (extra usage billing kicks in past 200k).`;
+  } else if (tokens > CONTEXT_WARN_75 && !fired.has(75)) {
+    fired.add(75);
+    warning = `Context window at ${pct}% (~${remainK}k tokens left). Consider checkpoint soon. If this session needs to go long, switch to /model sonnet[1m] before hitting 200k.`;
   }
 
-  return null;
+  contextWarnFired.set(chatId, fired);
+  return warning;
 }
 
 /**
@@ -281,6 +307,133 @@ function isToolEcho(text: string): boolean {
 }
 
 /**
+ * Circuit breaker: if tool-echo messages arrive faster than a human could type,
+ * a feedback loop is in progress. Activate cooldown to stop the bleed.
+ *
+ * During cooldown, ALL short messages (<200 chars) that aren't /commands are dropped.
+ * This prevents token waste regardless of how the loop was triggered.
+ */
+const CIRCUIT_BREAKER = {
+  /** Timestamps (ms) of recent tool-echo hits */
+  hits: [] as number[],
+  /** If >0, circuit is open -- drop messages until this timestamp */
+  cooldownUntil: 0,
+  /** How many tool-echo hits in the window trigger the breaker */
+  threshold: 5,
+  /** Window size in ms to count hits */
+  windowMs: 60_000,
+  /** How long to stay in cooldown (ms) */
+  cooldownMs: 5 * 60_000,
+};
+
+function recordToolEchoHit(): void {
+  const now = Date.now();
+  CIRCUIT_BREAKER.hits.push(now);
+  // Prune old hits outside the window
+  const cutoff = now - CIRCUIT_BREAKER.windowMs;
+  CIRCUIT_BREAKER.hits = CIRCUIT_BREAKER.hits.filter((t) => t > cutoff);
+
+  if (CIRCUIT_BREAKER.hits.length >= CIRCUIT_BREAKER.threshold) {
+    CIRCUIT_BREAKER.cooldownUntil = now + CIRCUIT_BREAKER.cooldownMs;
+    CIRCUIT_BREAKER.hits = []; // Reset after tripping
+    logger.error(
+      { cooldownMs: CIRCUIT_BREAKER.cooldownMs },
+      'CIRCUIT BREAKER ACTIVATED: tool-echo flood detected. Dropping messages for cooldown period.',
+    );
+    telemetry.emit({
+      timestamp: new Date().toISOString(),
+      event_type: 'circuit_breaker_activated',
+      cooldown_ms: CIRCUIT_BREAKER.cooldownMs,
+    });
+  }
+}
+
+function isCircuitBreakerOpen(message: string): boolean {
+  if (CIRCUIT_BREAKER.cooldownUntil <= 0) return false;
+  if (Date.now() >= CIRCUIT_BREAKER.cooldownUntil) {
+    // Cooldown expired, reset
+    CIRCUIT_BREAKER.cooldownUntil = 0;
+    logger.info('Circuit breaker cooldown expired. Resuming normal operation.');
+    return false;
+  }
+  // During cooldown: allow /commands through, drop everything else under 200 chars
+  const trimmed = message.trim();
+  if (trimmed.startsWith('/')) return false;
+  if (trimmed.length < 200) return true;
+  return false;
+}
+
+// ── Directive detection (Fix 3) ──────────────────────────────────────
+// Detects explicit user instructions that should persist across turns
+// within a session. These are stored in session_directives and injected
+// into every subsequent prompt until /newchat clears them.
+
+const DIRECTIVE_PATTERNS: RegExp[] = [
+  // "for the rest of this conversation/session, ..."
+  /for the rest of (?:this )?(conversation|session|chat)[,:]?\s+(.+)/i,
+  // "from now on, ..."
+  /from now on[,:]?\s+(.+)/i,
+  // "going forward, ..."
+  /going forward[,:]?\s+(.+)/i,
+  // "until I say otherwise, ..."
+  /until I say otherwise[,:]?\s+(.+)/i,
+  // "let's take/remove/turn off/disable X"
+  /let'?s\s+(?:take|remove|turn off|disable|drop|skip)\s+(.+?)(?:\s+for the rest|\s+from now|\s*$)/i,
+  // "no more X" / "stop X" / "don't X" + "this conversation/session"
+  /(?:no more|stop|don'?t|do not)\s+(.+?)(?:\s+(?:for the rest|from now|going forward|in this|this session|this conversation))/i,
+];
+
+/**
+ * Extract session directives from a user message.
+ * Returns an array of directive strings to persist, or empty if none detected.
+ */
+function extractDirectives(message: string): string[] {
+  const directives: string[] = [];
+  for (const pattern of DIRECTIVE_PATTERNS) {
+    const match = message.match(pattern);
+    if (match) {
+      // Use the full matched directive text, cleaned up
+      const directive = match[0].trim().replace(/[.!]+$/, '');
+      if (directive.length > 10 && directive.length < 300) {
+        directives.push(directive);
+      }
+    }
+  }
+  return directives;
+}
+
+/**
+ * Content-hash dedup (E2 defense-in-depth): catches replayed messages where
+ * the Telegram message_id changed but the content is identical. This covers
+ * edge cases where compaction or restart causes re-delivery with a new ID.
+ * In-memory LRU -- no persistence needed since SQLite dedup is the primary layer.
+ */
+const CONTENT_DEDUP = {
+  seen: new Map<string, number>(), // hash -> timestamp
+  maxEntries: 100,
+  windowMs: 2 * 60_000, // 2 minutes
+};
+
+function isContentDuplicate(chatId: string, message: string): boolean {
+  // Round timestamp to nearest minute so same message within ~60s window collides
+  const minuteBucket = Math.floor(Date.now() / 60_000);
+  const hash = crypto.createHash('md5').update(`${chatId}:${minuteBucket}:${message}`).digest('hex');
+  const now = Date.now();
+
+  // Prune old entries
+  if (CONTENT_DEDUP.seen.size > CONTENT_DEDUP.maxEntries) {
+    const cutoff = now - CONTENT_DEDUP.windowMs;
+    for (const [k, ts] of CONTENT_DEDUP.seen) {
+      if (ts < cutoff) CONTENT_DEDUP.seen.delete(k);
+    }
+  }
+
+  if (CONTENT_DEDUP.seen.has(hash)) return true;
+  CONTENT_DEDUP.seen.set(hash, now);
+  return false;
+}
+
+/**
  * Core message handler. Called for every inbound text/voice/photo/document.
  * @param skipLog  When true, skip logging this turn to conversation_log (used by /respin to avoid self-referential logging).
  */
@@ -294,10 +447,23 @@ async function handleMessage(ctx: Context, message: string, skipLog = false): Pr
     return;
   }
 
+  // Circuit breaker: during cooldown, drop short non-command messages
+  if (isCircuitBreakerOpen(message)) {
+    logger.debug({ messageLen: message.length }, 'Dropped message during circuit breaker cooldown');
+    return;
+  }
+
+  // Content-hash dedup: catches replayed messages with new message_ids
+  if (isContentDuplicate(chatIdStr, message)) {
+    logger.info({ chatId, messageLen: message.length }, 'Dropped content-duplicate message');
+    return;
+  }
+
   // Tool-echo filter: drop messages that are leaked tool-use descriptions
   // from a Claude Code subprocess. These cause a feedback loop where the bot
   // responds "Standing by." to each one, wasting tokens and spamming the chat.
   if (isToolEcho(message)) {
+    recordToolEchoHit();
     logger.info({ messageLen: message.length, preview: message.slice(0, 60) }, 'Dropped tool-echo message');
     return;
   }
@@ -323,12 +489,39 @@ async function handleMessage(ctx: Context, message: string, skipLog = false): Pr
     message_length: message.length,
   });
 
+  // Fix 3: Detect and store session directives before dispatching
+  if (!skipLog) {
+    const directives = extractDirectives(message);
+    for (const directive of directives) {
+      addSessionDirective(chatIdStr, directive);
+      logger.info({ directive }, 'Session directive stored');
+    }
+  }
+
   // Async dispatch: classify Claude-bound messages and dispatch long tasks
   // to the worker queue instead of blocking the bot.
-  if (isClaude(message)) {
+  // Skip classification for /respin (skipLog=true) -- the replayed history
+  // contains keywords that trigger false worker dispatch.
+  if (!skipLog && isClaude(message)) {
     const classification = classifyMessage(message);
     if (classification.isLong) {
-      const taskId = enqueueTask(chatIdStr, message, classification.workerType);
+      const sessionId = getSession(chatIdStr);
+
+      // Fix 4: Enrich dispatch prompt with recent conversation context.
+      // Workers resume the session but may lose active thread context in
+      // long sessions. Prepending recent turns anchors the worker to the
+      // current discussion thread.
+      const recentForDispatch = getRecentConversation(chatIdStr, 5);
+      let enrichedPrompt = message;
+      if (recentForDispatch.length > 0) {
+        const contextLines = recentForDispatch
+          .reverse() // chronological order
+          .map((t) => `[${t.role}]: ${t.content.slice(0, 300)}`)
+          .join('\n');
+        enrichedPrompt = `[Recent conversation context -- use this to understand the active discussion thread]\n${contextLines}\n[End context]\n\n${message}`;
+      }
+
+      const taskId = enqueueTask(chatIdStr, enrichedPrompt, classification.workerType, sessionId);
       const workerLabel = classification.workerType === 'default'
         ? 'a worker'
         : classification.workerType.charAt(0).toUpperCase() + classification.workerType.slice(1);
@@ -393,6 +586,7 @@ async function handleMessage(ctx: Context, message: string, skipLog = false): Pr
     const activeSessionId = result.newSessionId ?? sessionId;
     if (result.newSessionId) {
       setSession(chatIdStr, result.newSessionId);
+      resetContextWarnings(chatIdStr);
       logger.info({ newSessionId: result.newSessionId }, 'Session saved');
     }
 
@@ -423,11 +617,27 @@ async function handleMessage(ctx: Context, message: string, skipLog = false): Pr
     // Skip logging for synthetic messages like /respin to avoid self-referential growth.
     if (!skipLog) {
       saveConversationTurn(chatIdStr, message, responseText, activeSessionId);
+
+      // Fix 1: Update active topic from the user's message.
+      // First 150 chars of the user message, single-line, serves as a
+      // recency anchor that prevents system-prompt gravity from overriding
+      // the actual conversation thread.
+      const topicSnippet = message
+        .replace(/^\[Memory context\][\s\S]*?\[End memory context\]\s*/m, '') // Strip memory prefix
+        .replace(/^\[Active topic:.*?\]\s*/m, '')     // Strip topic prefix
+        .replace(/^\[Session directives[\s\S]*?\[End session directives\]\s*/m, '') // Strip directives
+        .replace(/^\[Recent conversation[\s\S]*?\[End recent conversation\]\s*/m, '') // Strip recent turns
+        .slice(0, 150)
+        .replace(/\n/g, ' ')
+        .trim();
+      if (topicSnippet.length > 10) {
+        setActiveTopic(chatIdStr, topicSnippet);
+      }
     }
 
     // Context window warning (Claude backend only)
     if (result.usage && result.backend === 'claude') {
-      const warning = checkContextWarning(result.usage);
+      const warning = checkContextWarning(result.usage, chatIdStr);
       if (warning) {
         await ctx.reply(warning);
       }
@@ -485,7 +695,10 @@ export function createBot(): Bot {
   // /newchat — clear Claude session, start fresh
   bot.command('newchat', async (ctx) => {
     if (!isAuthorised(ctx.chat!.id, ctx.from?.id)) return;
-    clearSession(ctx.chat!.id.toString());
+    const chatIdStr = ctx.chat!.id.toString();
+    clearSession(chatIdStr);
+    clearSessionDirectives(chatIdStr); // Fix 3: clear directives with session
+    resetContextWarnings(chatIdStr);
     await ctx.reply('Session cleared. Starting fresh.');
     logger.info({ chatId: ctx.chat!.id }, 'Session cleared by user');
   });
@@ -541,17 +754,20 @@ export function createBot(): Bot {
       return;
     }
 
-    const pct = Math.round((stats.lastCacheRead / 200_000) * 100);
-    const remaining = Math.max(0, 200_000 - stats.lastCacheRead);
+    const pct = Math.round((stats.lastCacheRead / CONTEXT_MAX) * 100);
+    const remaining = Math.max(0, CONTEXT_MAX - stats.lastCacheRead);
     const cost = stats.totalCostUsd.toFixed(4);
     const elapsed = Math.round((stats.lastTurnAt - stats.firstTurnAt) / 60);
 
     const lines = [
-      `Context window: ${pct}% used`,
+      `Context: ${pct}% (${Math.round(stats.lastCacheRead / 1000)}k / ${CONTEXT_MAX / 1000}k)`,
       `~${Math.round(remaining / 1000)}k tokens remaining`,
-      `${stats.turns} turns | ${elapsed}min session`,
-      `Cost: $${cost} | Compactions: ${stats.compactions}`,
+      `${stats.turns} turns | ${elapsed}min | $${cost}`,
+      `Compactions: ${stats.compactions}`,
     ];
+    if (pct > 70) {
+      lines.push('Tip: checkpoint + /newchat, or /model sonnet[1m] to extend');
+    }
 
     await ctx.reply(lines.join('\n'));
   });
@@ -590,12 +806,51 @@ export function createBot(): Bot {
   // /forget — clear session (memory decay handles the rest)
   bot.command('forget', async (ctx) => {
     if (!isAuthorised(ctx.chat!.id, ctx.from?.id)) return;
-    clearSession(ctx.chat!.id.toString());
+    const chatIdStr = ctx.chat!.id.toString();
+    clearSession(chatIdStr);
+    clearSessionDirectives(chatIdStr); // Fix 3: clear directives with session
     await ctx.reply('Session cleared. Memories will fade naturally over time.');
   });
 
+  // /signal — ingest a URL or topic into research-agents signal store
+  bot.command('signal', async (ctx) => {
+    if (!isAuthorised(ctx.chat!.id, ctx.from?.id)) return;
+
+    const text = ctx.message?.text ?? '';
+    const payload = text.replace(/^\/signal\s*/i, '').trim();
+
+    if (!payload) {
+      await ctx.reply('Usage: /signal <url or topic description>');
+      return;
+    }
+
+    await ctx.reply('Ingesting signal...');
+
+    try {
+      const { execFile } = await import('child_process');
+      const { promisify } = await import('util');
+      const execFileAsync = promisify(execFile);
+
+      const { stdout, stderr } = await execFileAsync(
+        '/home/apexaipc/projects/research-agents/.venv/bin/research-agents',
+        ['ingest', payload],
+        {
+          env: { ...process.env },
+          timeout: 60_000,
+        }
+      );
+
+      await ctx.reply(stdout.trim() || 'Signal ingested.');
+      if (stderr) logger.warn({ stderr }, '/signal stderr');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err }, '/signal ingest failed');
+      await ctx.reply(`Signal ingest failed: ${msg.slice(0, 200)}`);
+    }
+  });
+
   // Text messages — and any slash commands not owned by this bot (skills, e.g. /todo /gmail)
-  const OWN_COMMANDS = new Set(['/start', '/newchat', '/respin', '/convolife', '/voice', '/memory', '/forget', '/chatid']);
+  const OWN_COMMANDS = new Set(['/start', '/newchat', '/respin', '/convolife', '/voice', '/memory', '/forget', '/chatid', '/signal']);
   bot.on('message:text', async (ctx) => {
     // Dedup: skip if we already processed this message (409 restart replay)
     if (isDuplicate(ctx.message.message_id)) {

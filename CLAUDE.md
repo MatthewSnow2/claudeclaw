@@ -109,7 +109,7 @@ You have access to Arcade MCP tools for interacting with Linear, GitHub, and Sla
 When Matthew asks to run something on a schedule, create a scheduled task:
 
 ```bash
-node /home/apexaipc/projects/ea-claude/dist/schedule-cli.js create "PROMPT" "CRON"
+node /home/apexaipc/projects/claudeclaw/dist/schedule-cli.js create "PROMPT" "CRON"
 ```
 
 Common cron patterns:
@@ -120,6 +120,8 @@ Common cron patterns:
 
 List: `node /home/apexaipc/projects/claudeclaw/dist/schedule-cli.js list`
 Delete: `node /home/apexaipc/projects/claudeclaw/dist/schedule-cli.js delete <id>`
+Pause: `node /home/apexaipc/projects/claudeclaw/dist/schedule-cli.js pause <id>`
+Resume: `node /home/apexaipc/projects/claudeclaw/dist/schedule-cli.js resume <id>`
 
 ## Message Format
 
@@ -131,7 +133,99 @@ Delete: `node /home/apexaipc/projects/claudeclaw/dist/schedule-cli.js delete <id
 
 ## Memory
 
-You maintain context between messages via Claude Code session resumption. You don't need to re-introduce yourself each time. If Matthew references something from earlier in the conversation, you have that context.
+Multi-layer contextual memory system. On every message, `buildMemoryContext()` prepends structured context to your prompt:
+
+| Layer | Source | Purpose |
+|-------|--------|---------|
+| A | Active topic anchor | Prevents system-prompt gravity from pulling toward default topics |
+| B | Session directives | Explicit user instructions that persist within a session |
+| C | Recent conversation (last 6 turns, max 250 chars each) | Thread continuity across sessions and after /respin |
+| 1 | FTS5 keyword search (top 3) | Keyword recall from `memories` table |
+| 2 | Vector similarity via nomic-embed-text (top 3, threshold > 0.3) | Dense retrieval from `memory_vectors`; graceful skip if Ollama is down |
+| 3 | Recent memories (top 5) | Recency-weighted from `memories` table, deduplicated against Layers 1-2 |
+| 4 | Perceptor cross-session contexts (top 2) | Cross-tool context from Claude Desktop; graceful skip if index missing |
+
+Cross-layer deduplication by content (normalized lowercase) and row ID.
+
+**Extraction pipeline (Phase 7):**
+- Script: `scripts/extract_memories.py` on 30-min cron
+- LLM: Fireworks API with Qwen3-8B for structured fact extraction
+- Embedding: Ollama nomic-embed-text (768-dim vectors)
+- Batch: 20 conversation_log rows per chat, 5 turns per API call, max 20 facts per batch
+- Output: `memory_vectors` table with `category`, `tags`, `people`, `is_action_item`, `confidence`
+- Categories: decision, preference, project_state, action_item, technical_detail, person_info, insight
+
+**Decay & pruning:** Daily sweep decays salience + vector weights. Conversation log pruned to 500 entries.
+
+All memory data lives in `store/claudeclaw.db`.
+
+### Saving to Perceptor
+
+When Matthew asks you to save something to Perceptor, you MUST follow this exact format. Do NOT improvise a different structure.
+
+**Repo path:** `/home/apexaipc/projects/perceptor/.perceptor/`
+
+**Step 1: Generate ID and filename**
+```
+ID:       <slug>-<YYYY-MM-DD>
+Filename: <slug>_<YYYY_MM_DD>.md
+```
+Where `<slug>` = title lowercased, non-alphanumeric replaced with hyphens, leading/trailing hyphens stripped, max 50 chars.
+
+**Step 2: Write the context file** to `contexts/<filename>` as markdown:
+```markdown
+# <Title>
+
+**Conversation ID**: <id>
+**Date**: <YYYY-MM-DD>
+**Tags**: <comma-separated tags>
+**Related Projects**: <comma-separated projects>
+**Source**: cc
+
+---
+
+## Summary
+
+<2-3 sentence summary>
+
+---
+
+<Full content>
+
+---
+
+*Synced via Perceptor MCP on <ISO-8601 timestamp>*
+```
+
+**Step 3: Add entry to `index.json`** — append to the `contexts` array. ALL fields are required:
+```json
+{
+  "id": "<slug>-<YYYY-MM-DD>",
+  "title": "<Title>",
+  "date": "<YYYY-MM-DD>",
+  "tags": ["tag1", "tag2"],
+  "projects": ["Project Name"],
+  "file": "<slug>_<YYYY_MM_DD>.md",
+  "summary": "<2-3 sentence summary>",
+  "synced_to_cc": true,
+  "synced_at": "<ISO-8601 timestamp>",
+  "source": "cc"
+}
+```
+
+**Step 4: Commit and push**
+```bash
+cd /home/apexaipc/projects/perceptor
+git add .perceptor/
+git commit -m "Perceptor sync: <ISO-8601 timestamp>"
+git push
+```
+
+**Rules:**
+- File extension MUST be `.md` -- never `.json`, `.jsonx`, or anything else
+- Never use hash-based IDs like `ctx_<hash>` -- always use the `<slug>-<date>` format
+- Never omit required fields from the index entry
+- Always update `last_updated` at the top level of `index.json`
 
 ## Special Commands
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Semantic Memory Extraction -- Phase 7c (Structured Metadata)
-Extracts structured facts from conversation logs via Qwen (local Ollama),
-embeds them via nomic-embed-text, and stores in memory_vectors table.
+Semantic Memory Extraction -- Phase 7d (Fireworks + Chunking)
+Extracts structured facts from conversation logs via Qwen3-8B (Fireworks API),
+embeds them via nomic-embed-text (local Ollama), and stores in memory_vectors table.
 
 Architecture:
-  conversation_log -> Qwen extraction -> nomic embedding -> memory_vectors
+  conversation_log -> Fireworks Qwen3-8B extraction -> Ollama nomic embedding -> memory_vectors
 
 Runs every 30 minutes on cron. Zero external deps (stdlib only).
 
@@ -29,15 +29,22 @@ from typing import Any, Optional
 STORE_DIR = Path("/home/apexaipc/projects/claudeclaw/store")
 DB_PATH = STORE_DIR / "claudeclaw.db"
 
-# Ollama config
+# Fireworks config (extraction)
+FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1"
+EXTRACTION_MODEL = "accounts/fireworks/models/qwen3-8b"
+
+# Ollama config (embeddings only -- nomic-embed-text runs fine on CPU)
 OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-EXTRACTION_MODEL = "qwen2.5:7b-instruct"
 EMBEDDING_MODEL = "nomic-embed-text"
 EMBEDDING_DIMS = 768
 
 # Processing config
-BATCH_SIZE = 20  # conversation_log rows per batch
-MAX_FACTS_PER_BATCH = 20  # safety cap on extracted facts
+BATCH_SIZE = 20  # conversation_log rows fetched per chat per run
+CHUNK_SIZE = 5   # max turns sent to Qwen per extraction call
+MAX_FACTS_PER_BATCH = 20  # safety cap on extracted facts per chunk
+API_TIMEOUT = 60  # seconds for Fireworks API calls
+MAX_RETRIES = 1   # retry once on timeout before giving up
+RETRY_DELAY = 3   # seconds between retries
 
 # Valid categories for structured extraction
 VALID_CATEGORIES = {
@@ -70,6 +77,8 @@ DRY_RUN = "--dry-run" in sys.argv
 
 # Parse failure tracking
 _parse_failures = 0
+_consecutive_api_failures = 0
+MAX_CONSECUTIVE_FAILURES = 3  # Skip batch after this many consecutive Fireworks failures
 
 
 def log(msg: str) -> None:
@@ -77,8 +86,23 @@ def log(msg: str) -> None:
     print(f"[{ts}] {msg}", flush=True)
 
 
+def _load_fireworks_key() -> Optional[str]:
+    """Load Fireworks API key from ~/.env.shared."""
+    env_path = Path.home() / ".env.shared"
+    if not env_path.exists():
+        return None
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("FIREWORKS_API_KEY=") and not line.startswith("#"):
+            return line.split("=", 1)[1].strip().strip("'\"")
+    return None
+
+
+FIREWORKS_API_KEY = _load_fireworks_key()
+
+
 def ollama_available() -> bool:
-    """Check if Ollama is running."""
+    """Check if Ollama is running (needed for embeddings)."""
     try:
         req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags", method="GET")
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -88,28 +112,47 @@ def ollama_available() -> bool:
 
 
 def call_qwen(prompt: str) -> Optional[str]:
-    """Call Qwen via Ollama chat API. Returns raw response text or None on failure."""
+    """Call Qwen3-8B via Fireworks API with retry. Returns raw response text or None on failure."""
+    if not FIREWORKS_API_KEY:
+        log("FIREWORKS_API_KEY not found in ~/.env.shared")
+        return None
+
     payload = json.dumps({
         "model": EXTRACTION_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": False,
-        "options": {"temperature": 0.1, "num_predict": 2048},
+        "messages": [
+            {"role": "system", "content": "You are a fact extraction assistant. /no_think"},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": 2048,
+        "temperature": 0.1,
     }).encode("utf-8")
 
-    req = urllib.request.Request(
-        f"{OLLAMA_BASE_URL}/api/chat",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    for attempt in range(MAX_RETRIES + 1):
+        req = urllib.request.Request(
+            f"{FIREWORKS_BASE_URL}/chat/completions",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {FIREWORKS_API_KEY}",
+            },
+            method="POST",
+        )
 
-    try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data.get("message", {}).get("content", "")
-    except (urllib.error.URLError, OSError, json.JSONDecodeError) as e:
-        log(f"Qwen call failed: {e}")
-        return None
+        try:
+            with urllib.request.urlopen(req, timeout=API_TIMEOUT) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                # Strip any residual <think></think> tags from Qwen3
+                text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+                return text
+        except (urllib.error.URLError, OSError, json.JSONDecodeError) as e:
+            if attempt < MAX_RETRIES:
+                log(f"Fireworks call failed (attempt {attempt + 1}/{MAX_RETRIES + 1}): {e} -- retrying in {RETRY_DELAY}s")
+                time.sleep(RETRY_DELAY)
+            else:
+                log(f"Fireworks call failed after {MAX_RETRIES + 1} attempts: {e}")
+                return None
+    return None
 
 
 def embed_text(text: str) -> Optional[bytes]:
@@ -334,8 +377,12 @@ def format_turns(rows: list[dict]) -> str:
 
 def run_extraction():
     """Main extraction loop."""
+    if not FIREWORKS_API_KEY:
+        log("FIREWORKS_API_KEY not set in ~/.env.shared -- skipping extraction")
+        return
+
     if not ollama_available():
-        log("Ollama not running -- skipping extraction")
+        log("Ollama not running (needed for embeddings) -- skipping extraction")
         return
 
     if not DB_PATH.exists():
@@ -385,91 +432,115 @@ def run_extraction():
 
             rows_as_dicts = [dict(r) for r in rows]
             max_id = max(r["id"] for r in rows_as_dicts)
-            conversation_text = format_turns(rows_as_dicts)
 
             log(f"Processing chat {chat_id}: {len(rows_as_dicts)} turns (log IDs {last_log_id + 1}..{max_id})")
 
-            # If all messages were filtered as spam, advance watermark without calling Qwen
-            if not conversation_text.strip():
-                log(f"  All {len(rows_as_dicts)} turns were spam -- advancing watermark to {max_id}")
+            # Split into chunks of CHUNK_SIZE for manageable Qwen calls
+            chunks = [rows_as_dicts[i:i + CHUNK_SIZE] for i in range(0, len(rows_as_dicts), CHUNK_SIZE)]
+            log(f"  Split into {len(chunks)} chunks of up to {CHUNK_SIZE} turns")
+
+            chunk_failures = 0  # consecutive failures within this chat's chunks
+
+            for chunk_idx, chunk in enumerate(chunks):
+                chunk_max_id = max(r["id"] for r in chunk)
+                conversation_text = format_turns(chunk)
+
+                # If all messages in chunk were spam, advance watermark past this chunk
+                if not conversation_text.strip():
+                    log(f"  Chunk {chunk_idx + 1}: all {len(chunk)} turns were spam -- skipping")
+                    now = int(time.time())
+                    conn.execute(
+                        """INSERT OR REPLACE INTO extraction_state
+                           (chat_id, last_log_id, last_run_at, facts_total)
+                           VALUES (?, ?, ?, ?)""",
+                        (chat_id, chunk_max_id, now, facts_total),
+                    )
+                    conn.commit()
+                    continue
+
+                if DRY_RUN:
+                    log(f"[DRY RUN] Chunk {chunk_idx + 1}: {len(conversation_text)} chars to Qwen")
+                    prompt = EXTRACTION_PROMPT.format(conversation=conversation_text)
+                    raw_response = call_qwen(prompt)
+                    if raw_response:
+                        memory_objects = parse_memory_objects(raw_response)
+                        log(f"[DRY RUN] Extracted {len(memory_objects)} structured facts:")
+                        for mo in memory_objects:
+                            log(f"  - [{mo['category']}] {mo['content']} (conf={mo['confidence']}, tags={mo['tags']})")
+                    continue
+
+                # Call Qwen for extraction
+                prompt = EXTRACTION_PROMPT.format(conversation=conversation_text)
+                raw_response = call_qwen(prompt)
+
+                if raw_response is None:
+                    chunk_failures += 1
+                    _consecutive_api_failures += 1
+                    if chunk_failures >= MAX_CONSECUTIVE_FAILURES:
+                        # Advance watermark past this entire batch to prevent infinite stuck loop
+                        log(f"  {chunk_failures} consecutive failures -- advancing watermark past stuck batch (-> {max_id})")
+                        now = int(time.time())
+                        conn.execute(
+                            """INSERT OR REPLACE INTO extraction_state
+                               (chat_id, last_log_id, last_run_at, facts_total)
+                               VALUES (?, ?, ?, ?)""",
+                            (chat_id, max_id, now, facts_total),
+                        )
+                        conn.commit()
+                        break
+                    log(f"  Chunk {chunk_idx + 1}: Fireworks call failed ({chunk_failures}/{MAX_CONSECUTIVE_FAILURES} before skip), skipping chunk")
+                    continue
+                else:
+                    chunk_failures = 0  # reset on success
+                    _consecutive_api_failures = 0
+
+                memory_objects = parse_memory_objects(raw_response)
+                log(f"  Chunk {chunk_idx + 1}: extracted {len(memory_objects)} facts")
+
+                # Embed and store each fact
+                source_ids = ",".join(str(r["id"]) for r in chunk)
+                stored = 0
+
+                for mo in memory_objects:
+                    embedding = embed_text(mo["content"])
+                    if embedding is None:
+                        log(f"    Embedding failed for fact: {mo['content'][:80]}")
+                        continue
+
+                    now = int(time.time())
+                    conn.execute(
+                        """INSERT INTO memory_vectors
+                           (chat_id, content, source_type, embedding, salience, created_at, accessed_at, source_log_ids,
+                            category, tags, people, is_action_item, confidence)
+                           VALUES (?, ?, 'extraction', ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            chat_id,
+                            mo["content"],
+                            embedding,
+                            now,
+                            now,
+                            source_ids,
+                            mo["category"],
+                            json.dumps(mo["tags"]),
+                            json.dumps(mo["people"]),
+                            1 if mo["is_action_item"] else 0,
+                            mo["confidence"],
+                        ),
+                    )
+                    stored += 1
+
+                # Update watermark after each successful chunk
+                facts_total += stored
                 now = int(time.time())
                 conn.execute(
                     """INSERT OR REPLACE INTO extraction_state
                        (chat_id, last_log_id, last_run_at, facts_total)
                        VALUES (?, ?, ?, ?)""",
-                    (chat_id, max_id, now, facts_total),
+                    (chat_id, chunk_max_id, now, facts_total),
                 )
                 conn.commit()
-                continue
-
-            if DRY_RUN:
-                log(f"[DRY RUN] Would send {len(conversation_text)} chars to Qwen")
-                # Still call Qwen in dry run to show what would be extracted
-                prompt = EXTRACTION_PROMPT.format(conversation=conversation_text)
-                raw_response = call_qwen(prompt)
-                if raw_response:
-                    memory_objects = parse_memory_objects(raw_response)
-                    log(f"[DRY RUN] Extracted {len(memory_objects)} structured facts:")
-                    for mo in memory_objects:
-                        log(f"  - [{mo['category']}] {mo['content']} (conf={mo['confidence']}, tags={mo['tags']})")
-                continue
-
-            # Call Qwen for extraction
-            prompt = EXTRACTION_PROMPT.format(conversation=conversation_text)
-            raw_response = call_qwen(prompt)
-
-            if raw_response is None:
-                log(f"Qwen extraction failed for chat {chat_id}, skipping batch")
-                continue
-
-            memory_objects = parse_memory_objects(raw_response)
-            log(f"Extracted {len(memory_objects)} structured facts from chat {chat_id}")
-
-            # Embed and store each fact
-            source_ids = ",".join(str(r["id"]) for r in rows_as_dicts)
-            stored = 0
-
-            for mo in memory_objects:
-                embedding = embed_text(mo["content"])
-                if embedding is None:
-                    log(f"  Embedding failed for fact: {mo['content'][:80]}")
-                    continue
-
-                now = int(time.time())
-                conn.execute(
-                    """INSERT INTO memory_vectors
-                       (chat_id, content, source_type, embedding, salience, created_at, accessed_at, source_log_ids,
-                        category, tags, people, is_action_item, confidence)
-                       VALUES (?, ?, 'extraction', ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        chat_id,
-                        mo["content"],
-                        embedding,
-                        now,
-                        now,
-                        source_ids,
-                        mo["category"],
-                        json.dumps(mo["tags"]),
-                        json.dumps(mo["people"]),
-                        1 if mo["is_action_item"] else 0,
-                        mo["confidence"],
-                    ),
-                )
-                stored += 1
-
-            # Update watermark
-            facts_total += stored
-            now = int(time.time())
-            conn.execute(
-                """INSERT OR REPLACE INTO extraction_state
-                   (chat_id, last_log_id, last_run_at, facts_total)
-                   VALUES (?, ?, ?, ?)""",
-                (chat_id, max_id, now, facts_total),
-            )
-
-            conn.commit()
-            total_facts += stored
-            log(f"  Stored {stored}/{len(memory_objects)} facts, watermark -> {max_id}")
+                total_facts += stored
+                log(f"  Chunk {chunk_idx + 1}: stored {stored}/{len(memory_objects)} facts, watermark -> {chunk_max_id}")
 
         log(f"Extraction complete: {total_facts} new facts across {len(chat_ids)} chats")
         if _parse_failures > 0:

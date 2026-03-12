@@ -108,6 +108,11 @@ function isRetryableError(err: unknown): boolean {
   return msg.includes('529') || msg.includes('overloaded') || msg.includes('503');
 }
 
+function isStaleSessionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return err.message.includes('exited with code 1');
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -170,6 +175,16 @@ export async function runAgent(
       try {
         return await runAgentInner(message, sessionId, onTyping, onProgress, cwd);
       } catch (err) {
+        // Stale session: Claude Code exits with code 1 when resuming a
+        // session that no longer exists. Retry once with a fresh session.
+        if (sessionId && isStaleSessionError(err)) {
+          logger.warn(
+            { sessionId },
+            'Session not found, starting fresh session',
+          );
+          sessionId = undefined;
+          continue;
+        }
         if (attempt < MAX_RETRIES && isRetryableError(err)) {
           const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
           logger.warn(

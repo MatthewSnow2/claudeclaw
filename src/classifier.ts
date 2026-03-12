@@ -103,6 +103,34 @@ const WORKER_ROUTES: Array<{ patterns: RegExp[]; worker: WorkerType }> = [
   },
 ];
 
+/** All named worker types (excludes 'default'). Used for bracket exclusion. */
+const NAMED_WORKERS: WorkerType[] = WORKER_ROUTES.map((r) => r.worker);
+
+/** Non-ravage worker names. Used for code context override detection. */
+const NON_RAVAGE_WORKERS: WorkerType[] = NAMED_WORKERS.filter((w) => w !== 'ravage');
+
+/**
+ * Code artifact patterns: when these appear alongside a non-ravage worker
+ * name, the message is about coding work ON that worker's code, not a task
+ * FOR that worker. Force route to ravage.
+ *
+ * Example: "fix the Starscream classifier.ts" -> ravage (not starscream)
+ * Example: "update Soundwave's CLAUDE.md" -> ravage (not soundwave)
+ * Counter: "Starscream, write a LinkedIn post" -> starscream (no code artifacts)
+ */
+const CODE_ARTIFACT_PATTERNS: RegExp[] = [
+  // File extensions (explicit list to avoid matching URLs like example.com)
+  /\.\b(ts|js|py|md|json|html|css|sql|sh|yaml|yml|toml|cfg|cjs|mjs)\b/i,
+  // Path segments
+  /\b(src|dist|scripts|workers|store|dashboard|tests?)\//i,
+  // Config/project files
+  /\bCLAUDE\.md\b/,
+  /\b(package\.json|tsconfig|pyproject|ecosystem\.config)\b/i,
+  // Code structure terms (only when specific enough to not false-positive)
+  /\b(source\s*code|codebase|repo(sitory)?|workflow|pipeline\s+code)\b/i,
+  /\b(classifier|dispatcher|scheduler|worker\.ts|result.?poller)\b/i,
+];
+
 /**
  * Long-task indicators: if a message matches any of these and didn't
  * match a quick pattern, it gets dispatched to a worker.
@@ -210,10 +238,47 @@ export function classifyMessage(text: string): Classification {
   // Strip @prefix for classification (routing already handled by router.ts)
   const stripped = trimmed.replace(/^@\w+\s+/, '');
 
-  // Strip backtick-wrapped text before classification.
-  // Backticks denote references to agents/concepts, not commands to them.
+  // Strip backtick-wrapped and bracket-wrapped text before classification.
+  // Both denote references to agents/concepts, not commands to them.
   // e.g. "Rename the `Starscream` card" won't route to Starscream.
-  const cleaned = stripped.replace(/`[^`]+`/g, '');
+  // e.g. "[Starscream] posted twice" won't route to Starscream.
+  const cleaned = stripped.replace(/`[^`]+`/g, '').replace(/\[[^\]]+\]/g, '');
+
+  // Bracket exclusion: if an agent name appears ONLY inside [brackets]
+  // (not bare in the message), exclude that worker from dispatch entirely.
+  // Brackets signal a reference, not a command. Applies to all workers.
+  const bracketContents = stripped.match(/\[[^\]]+\]/g) || [];
+  const bracketExcluded = new Set<WorkerType>();
+  for (const name of NAMED_WORKERS) {
+    const inBrackets = bracketContents.some((b) =>
+      new RegExp(`\\b${name}\\b`, 'i').test(b),
+    );
+    const outsideBrackets = new RegExp(`\\b${name}\\b`, 'i').test(cleaned);
+    if (inBrackets && !outsideBrackets) {
+      bracketExcluded.add(name);
+    }
+  }
+
+  // Code context override: if a message mentions code artifacts (file
+  // extensions, paths, config files) alongside a non-ravage worker name,
+  // the user is talking about coding work ON that worker, not dispatching
+  // TO it. Force those workers out of routing so ravage picks up the task.
+  //
+  // Suppressed for questions (starts with question word or ends with ?)
+  // because "Why did Starscream post twice...check the classifier" is a
+  // question about behavior, not a code change request.
+  const hasCodeArtifacts = CODE_ARTIFACT_PATTERNS.some((p) => p.test(stripped));
+  const isQuestionForm =
+    /^(who|what|where|when|why|how|is|are|do|does|did|can|could|will|would|should)\b/i.test(stripped) ||
+    /\?\s*$/.test(stripped);
+  const codeContextWorkers = new Set<WorkerType>();
+  if (hasCodeArtifacts && !isQuestionForm) {
+    for (const name of NON_RAVAGE_WORKERS) {
+      if (new RegExp(`\\b${name}\\b`, 'i').test(cleaned)) {
+        codeContextWorkers.add(name);
+      }
+    }
+  }
 
   // 1. Check quick patterns first (use stripped, not cleaned -- quick
   //    patterns match message structure like /commands and greetings)
@@ -227,7 +292,9 @@ export function classifyMessage(text: string): Classification {
   // AND has long task indicators, dispatch to all matched workers (Phase D).
   // If it doesn't have long indicators, keep inline (it's a discussion).
   // Use `cleaned` so backtick-wrapped agent names don't trigger routing.
-  const matchedWorkers = getMatchedWorkers(cleaned);
+  const matchedWorkers = getMatchedWorkers(cleaned).filter(
+    (w) => !bracketExcluded.has(w) && !codeContextWorkers.has(w),
+  );
   if (matchedWorkers.length >= 2) {
     const hasLongIndicators = LONG_INDICATORS.some((p) => p.test(cleaned));
     if (hasLongIndicators) {
@@ -266,7 +333,11 @@ export function classifyMessage(text: string): Classification {
     // Exception: if the message explicitly names a worker AND is imperative
     // (not a question or meta-discussion about the worker), dispatch anyway.
     // Use `cleaned` so backtick-wrapped names don't count as explicit.
-    const explicitWorker = /\b(starscream|ravage|soundwave|astrotrain)\b/i.test(cleaned);
+    // Code-context workers don't count as explicit dispatch targets either.
+    const explicitWorkerMatch = cleaned.match(/\b(starscream|ravage|soundwave|astrotrain)\b/i);
+    const explicitWorker = explicitWorkerMatch
+      ? !codeContextWorkers.has(explicitWorkerMatch[1].toLowerCase() as WorkerType)
+      : false;
     if (!explicitWorker) {
       return { isLong: false, workerType: 'default', modelTier: 'sonnet' };
     }
@@ -295,13 +366,23 @@ export function classifyMessage(text: string): Classification {
   // Determine model tier based on task complexity
   const modelTier = determineModelTier(cleaned);
 
-  // 5. Route to the appropriate worker (use cleaned)
+  // 5. Route to the appropriate worker (use cleaned, skip bracket-excluded
+  //    and code-context-overridden workers)
   for (const route of WORKER_ROUTES) {
+    if (bracketExcluded.has(route.worker)) continue;
+    if (codeContextWorkers.has(route.worker)) continue;
     for (const pattern of route.patterns) {
       if (pattern.test(cleaned)) {
         return { isLong: true, workerType: route.worker, modelTier };
       }
     }
+  }
+
+  // 6. Code context fallback: if no worker matched because codeContextWorkers
+  //    excluded the only matching worker, route to ravage. The user is doing
+  //    coding work ON a worker (e.g. "rewrite Soundwave CLAUDE.md").
+  if (codeContextWorkers.size > 0) {
+    return { isLong: true, workerType: 'ravage', modelTier };
   }
 
   // Long task but no specific worker match: use default

@@ -143,6 +143,145 @@ describe('classifyMessage', () => {
     expect(result.workerType).toBe('ravage'); // "build" routes to ravage
   });
 
+  // ── Square bracket escape (mention without dispatch) ──────────
+
+  it('does not route to an agent when its name is in square brackets', () => {
+    // "[Starscream] posted twice" -- referencing Starscream, not commanding it
+    const result = classifyMessage('[Starscream] posted twice today');
+    expect(result.workerType).not.toBe('starscream');
+  });
+
+  it('does not route when multiple agent names are in square brackets', () => {
+    // Both Ravage and Soundwave are bracket-excluded; "build" would match
+    // ravage but ravage is excluded, so falls to default
+    const result = classifyMessage('Build a comparison between [Ravage] and [Soundwave] efficiency');
+    expect(result.workerType).toBe('default');
+    expect(result.multiWorker).toBeUndefined();
+  });
+
+  it('still routes when agent name is NOT in square brackets', () => {
+    const result = classifyMessage('Starscream, write a post about AI');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('starscream');
+  });
+
+  it('routes correctly when only some names are bracket-escaped', () => {
+    const result = classifyMessage('Build a new card for [Starscream] on the dashboard');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('ravage');
+  });
+
+  it('handles mixed backtick and bracket escapes', () => {
+    const result = classifyMessage('Build a dashboard showing `Ravage` and [Soundwave] stats');
+    expect(result.workerType).toBe('ravage');
+    expect(result.multiWorker).toBeUndefined();
+  });
+
+  // ── Bracket exclusion (skip dispatch to bracket-referenced worker) ──
+
+  it('skips dispatch to bracket-excluded worker even when keywords match', () => {
+    // "fix" matches ravage, but [Ravage] means "about Ravage, not for Ravage"
+    const result = classifyMessage('[Ravage] fix the auth bug');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('default');
+  });
+
+  it('skips dispatch to bracket-excluded starscream even when LinkedIn matches', () => {
+    const result = classifyMessage('[Starscream] write a LinkedIn post about AI agents');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).not.toBe('starscream');
+  });
+
+  it('does not exclude a worker when name appears both in and outside brackets', () => {
+    const result = classifyMessage('[Ravage] Ravage, fix the auth bug');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('ravage');
+  });
+
+  it('excludes only the bracketed worker, routes to other matching worker', () => {
+    const result = classifyMessage('[Ravage] Starscream, write a LinkedIn post');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('starscream');
+  });
+
+  it('excludes bracket-only worker from multi-worker dispatch', () => {
+    // "build" matches ravage, "LinkedIn" matches starscream, "research" matches soundwave
+    // but [Soundwave] excludes soundwave from the list
+    const result = classifyMessage('[Soundwave] build a LinkedIn post and research competitors');
+    expect(result.isLong).toBe(true);
+    expect(result.multiWorker).toEqual(['starscream', 'ravage']);
+  });
+
+  it('bracket exclusion works with name embedded in longer bracket text', () => {
+    // [the Ravage worker] -- name is inside brackets but not the only content
+    const result = classifyMessage('[the Ravage worker] fix the auth bug');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('default');
+  });
+
+  // ── Code context override (route to ravage when coding ON a worker) ──
+
+  it('routes to ravage when message has code artifact + worker name', () => {
+    // "fix" + "Starscream" + "classifier.ts" = coding ON Starscream, not FOR it
+    const result = classifyMessage('fix the Starscream classifier.ts');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('ravage');
+  });
+
+  it('routes to ravage when rewriting a worker CLAUDE.md', () => {
+    const result = classifyMessage('rewrite Soundwave CLAUDE.md with new instructions');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('ravage');
+  });
+
+  it('routes to ravage when referencing worker src/ path', () => {
+    const result = classifyMessage('refactor the Starscream workers/starscream/ directory');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('ravage');
+  });
+
+  it('does NOT trigger code context for messages without artifacts', () => {
+    // No file extensions, no paths, no code terms -- normal Starscream dispatch
+    const result = classifyMessage('Starscream, write a LinkedIn post about AI');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('starscream');
+  });
+
+  it('code context works with AstroTrain too', () => {
+    const result = classifyMessage('fix the AstroTrain scheduler.ts bug');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('ravage');
+  });
+
+  it('code context does not affect ravage itself', () => {
+    // Ravage + code artifacts = still ravage (it IS the coding worker)
+    const result = classifyMessage('Ravage, fix the classifier.ts bug');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('ravage');
+  });
+
+  it('code context removes worker from multi-worker dispatch', () => {
+    // "build" matches ravage, "Starscream" + ".ts" triggers code context
+    // Starscream gets excluded, only ravage remains (single worker, not multi)
+    const result = classifyMessage('build the Starscream analytics.ts module');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('ravage');
+    expect(result.multiWorker).toBeUndefined();
+  });
+
+  it('does NOT trigger code context for questions about code', () => {
+    // Question about the classifier mentioning Starscream -- still a discussion
+    const result = classifyMessage('Why is the Starscream classifier.ts routing incorrectly?');
+    expect(result.workerType).not.toBe('ravage');
+  });
+
+  it('code context + bracket exclusion work together', () => {
+    // [Soundwave] bracket-excluded + Starscream code-context-excluded
+    const result = classifyMessage('[Soundwave] fix the Starscream classifier.ts');
+    expect(result.isLong).toBe(true);
+    expect(result.workerType).toBe('ravage');
+  });
+
   // ── Edge cases ─────────────────────────────────────────────────
 
   it('handles empty string', () => {

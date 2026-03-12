@@ -38,11 +38,16 @@ function parseEnv(filePath: string, keys: Set<string>): Record<string, string> {
 
 /**
  * Read values for the requested keys from the local .env file,
- * falling back to ~/.env.shared for any keys not found locally.
+ * falling back to ~/.env.telegram then ~/.env.shared for any keys not found.
  *
  * Does NOT load anything into process.env — callers decide what to
  * do with the values. This keeps secrets out of the process environment
  * so they don't leak to child processes.
+ *
+ * Load order (first found wins):
+ *   1. Local .env (project-specific overrides)
+ *   2. ~/.env.telegram (isolated Telegram credentials — not in project dir)
+ *   3. ~/.env.shared (shared secrets fallback)
  */
 export function readEnvFile(keys: string[]): Record<string, string> {
   const wanted = new Set(keys);
@@ -51,15 +56,25 @@ export function readEnvFile(keys: string[]): Record<string, string> {
   const localFile = path.join(process.cwd(), '.env');
   const local = parseEnv(localFile, wanted);
 
-  // 2. ~/.env.shared (shared secrets fallback)
-  const missing = new Set(keys.filter((k) => !local[k]));
-  let shared: Record<string, string> = {};
-  if (missing.size > 0) {
-    const sharedFile = path.join(os.homedir(), '.env.shared');
-    shared = parseEnv(sharedFile, missing);
+  // 2. ~/.env.telegram (Telegram creds isolated from project directory)
+  const missingAfterLocal = new Set(keys.filter((k) => !local[k]));
+  let telegram: Record<string, string> = {};
+  if (missingAfterLocal.size > 0) {
+    const telegramFile = path.join(os.homedir(), '.env.telegram');
+    telegram = parseEnv(telegramFile, missingAfterLocal);
   }
 
-  return { ...shared, ...local };
+  // 3. ~/.env.shared (shared secrets fallback)
+  const missingAfterTelegram = new Set(
+    keys.filter((k) => !local[k] && !telegram[k]),
+  );
+  let shared: Record<string, string> = {};
+  if (missingAfterTelegram.size > 0) {
+    const sharedFile = path.join(os.homedir(), '.env.shared');
+    shared = parseEnv(sharedFile, missingAfterTelegram);
+  }
+
+  return { ...shared, ...telegram, ...local };
 }
 
 /**

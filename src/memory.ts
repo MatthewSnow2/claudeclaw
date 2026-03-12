@@ -1,10 +1,15 @@
+import { promises as fsPromises } from 'fs';
 import http from 'http';
+import path from 'path';
 
 import {
   decayMemories,
   decayMemoryVectors,
+  getActiveTopic,
   getMemoryVectors,
+  getRecentConversation,
   getRecentMemories,
+  getSessionDirectives,
   logConversationTurn,
   pruneConversationLog,
   searchMemories,
@@ -12,6 +17,10 @@ import {
   touchMemoryVector,
 } from './db.js';
 import { logger } from './logger.js';
+
+// Perceptor config
+const PERCEPTOR_INDEX_PATH = '/home/apexaipc/projects/perceptor/.perceptor/index.json';
+const PERCEPTOR_MAX_RESULTS = 2;
 
 // Ollama config for query-time embedding
 const OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
@@ -97,23 +106,121 @@ export function cosineSimilarity(a: Buffer, b: Buffer, dim: number = EMBEDDING_D
 }
 
 /**
- * Build a compact memory context string to prepend to the user's message.
- * Uses 3-layer progressive disclosure:
+ * Search Perceptor contexts by keyword matching against index metadata.
+ * Returns top N matching context summaries. Filesystem-based, no MCP dependency.
+ * Graceful degradation: returns [] if index is missing or unreadable.
+ */
+async function searchPerceptorContexts(
+  query: string,
+  limit: number = PERCEPTOR_MAX_RESULTS,
+): Promise<Array<{ title: string; summary: string; score: number }>> {
+  try {
+    const raw = await fsPromises.readFile(PERCEPTOR_INDEX_PATH, 'utf-8');
+    const index = JSON.parse(raw) as {
+      contexts: Array<{
+        title: string;
+        summary: string;
+        tags: string[];
+        projects: string[];
+        archived?: boolean;
+      }>;
+    };
+
+    const queryLower = query.toLowerCase();
+    const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 3);
+
+    const scored = index.contexts
+      .filter((c) => !c.archived)
+      .map((ctx) => {
+        let score = 0;
+        const titleLower = ctx.title.toLowerCase();
+        const summaryLower = ctx.summary.toLowerCase();
+        const tagsLower = ctx.tags.map((t) => t.toLowerCase());
+
+        for (const word of queryWords) {
+          if (titleLower.includes(word)) score += 0.4;
+          if (summaryLower.includes(word)) score += 0.2;
+          if (tagsLower.some((t) => t.includes(word))) score += 0.3;
+        }
+        // Normalize by word count so longer queries don't inflate scores
+        if (queryWords.length > 0) score /= queryWords.length;
+
+        return { title: ctx.title, summary: ctx.summary, score };
+      })
+      .filter((r) => r.score > 0.15)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+
+    return scored;
+  } catch (err) {
+    logger.debug({ err }, 'Perceptor context search failed (graceful degradation)');
+    return [];
+  }
+}
+
+/**
+ * Build a structured context string to prepend to the user's message.
+ *
+ * Context hierarchy (injected in this order for positional priority):
+ *   Layer A: Active topic anchor (1-line summary of current discussion thread)
+ *   Layer B: Session directives (explicit user instructions like "no Christensen filter")
+ *   Layer C: Recent conversation turns (last 6 raw messages for thread continuity)
  *   Layer 1: FTS5 keyword search against user message -> top 3 results
  *   Layer 2: Vector similarity search via nomic-embed-text -> top 3 results (threshold > 0.3)
  *   Layer 3: Most recent 5 memories (recency)
- *   Deduplicates across all layers.
+ *   Layer 4: Perceptor cross-session contexts -> top 2 results
+ *   Deduplicates across memory layers (1-4).
  *
  * Graceful degradation: if Ollama is down, Layer 2 is silently skipped.
- * Returns empty string if no memories exist for this chat.
+ * If Perceptor index is missing, Layer 4 is silently skipped.
+ * Returns empty string if no context exists for this chat.
  */
 export async function buildMemoryContext(
   chatId: string,
   userMessage: string,
 ): Promise<string> {
+  const sections: string[] = [];
+
+  // ── Layer A: Active topic anchor ──────────────────────────────────
+  // Highest positional priority. Prevents system-prompt gravity from
+  // pulling the model toward a default topic (e.g. ST Metro) when the
+  // conversation is about something else entirely.
+  const activeTopic = getActiveTopic(chatId);
+  if (activeTopic) {
+    sections.push(`[Active topic: ${activeTopic}]`);
+  }
+
+  // ── Layer B: Session directives ───────────────────────────────────
+  // Explicit user instructions that persist within a session.
+  // e.g. "no Christensen filter", "respond in bullet points"
+  const directives = getSessionDirectives(chatId);
+  if (directives.length > 0) {
+    const directiveLines = directives.map((d) => `- ${d.directive}`).join('\n');
+    sections.push(`[Session directives -- these are explicit user instructions, follow them]\n${directiveLines}\n[End session directives]`);
+  }
+
+  // ── Layer C: Recent conversation turns ────────────────────────────
+  // Raw recency anchor: last 6 turns from conversation_log.
+  // Provides thread continuity across sessions and after /respin.
+  // Truncated to 250 chars per turn to keep context compact.
+  const recentTurns = getRecentConversation(chatId, 6);
+  if (recentTurns.length > 0) {
+    const turnLines = recentTurns
+      .reverse() // chronological order (getRecentConversation returns DESC)
+      .map((t) => {
+        const content = t.content.length > 250
+          ? t.content.slice(0, 250) + '...'
+          : t.content;
+        return `[${t.role}]: ${content}`;
+      })
+      .join('\n');
+    sections.push(`[Recent conversation]\n${turnLines}\n[End recent conversation]`);
+  }
+
+  // ── Layers 1-4: Memory context ────────────────────────────────────
   const seenIds = new Set<number>();       // dedup within memories table (by row id)
   const seenContent = new Set<string>();   // cross-table dedup (by normalized content)
-  const lines: string[] = [];
+  const memLines: string[] = [];
 
   /** Normalize content for cross-table dedup comparison. */
   const normalizeContent = (s: string): string => s.trim().toLowerCase();
@@ -126,7 +233,7 @@ export async function buildMemoryContext(
     seenIds.add(mem.id);
     seenContent.add(key);
     touchMemory(mem.id);
-    lines.push(`- ${mem.content} (${mem.sector})`);
+    memLines.push(`- ${mem.content} (${mem.sector})`);
   }
 
   // Layer 2: Vector similarity search (graceful degradation if Ollama down)
@@ -151,7 +258,7 @@ export async function buildMemoryContext(
           seenContent.add(key);
           touchMemoryVector(v.id);
           const label = v.category ? `vector:${v.category}` : 'vector';
-          lines.push(`- ${v.content} (${label})`);
+          memLines.push(`- ${v.content} (${label})`);
         }
       }
     }
@@ -168,12 +275,31 @@ export async function buildMemoryContext(
     seenIds.add(mem.id);
     seenContent.add(key);
     touchMemory(mem.id);
-    lines.push(`- ${mem.content} (${mem.sector})`);
+    memLines.push(`- ${mem.content} (${mem.sector})`);
   }
 
-  if (lines.length === 0) return '';
+  // Layer 4: Perceptor cross-session contexts (graceful degradation if index missing)
+  try {
+    const perceptorResults = await searchPerceptorContexts(userMessage);
+    for (const ctx of perceptorResults) {
+      const key = normalizeContent(ctx.summary);
+      if (seenContent.has(key)) continue;
+      seenContent.add(key);
+      // Truncate summary to keep context compact
+      const summary = ctx.summary.length > 200 ? ctx.summary.slice(0, 200) + '...' : ctx.summary;
+      memLines.push(`- ${summary} (perceptor:${ctx.title.slice(0, 40)})`);
+    }
+  } catch (err) {
+    logger.debug({ err }, 'Perceptor layer failed (graceful degradation)');
+  }
 
-  return `[Memory context]\n${lines.join('\n')}\n[End memory context]`;
+  if (memLines.length > 0) {
+    sections.push(`[Memory context]\n${memLines.join('\n')}\n[End memory context]`);
+  }
+
+  if (sections.length === 0) return '';
+
+  return sections.join('\n\n');
 }
 
 /**

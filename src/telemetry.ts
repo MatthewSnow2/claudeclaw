@@ -20,6 +20,7 @@ export type TelemetryEvent =
   | ScheduledTaskDispatchedEvent
   | TaskDispatchedEvent
   | DispatchTaskCompletedEvent
+  | CircuitBreakerEvent
   | ErrorEvent;
 
 interface BaseEvent {
@@ -83,6 +84,11 @@ export interface DispatchTaskCompletedEvent extends BaseEvent {
   worker_type: string;
   success: boolean;
   latency_ms: number;
+}
+
+export interface CircuitBreakerEvent extends BaseEvent {
+  event_type: 'circuit_breaker_activated';
+  cooldown_ms: number;
 }
 
 export interface ErrorEvent extends BaseEvent {

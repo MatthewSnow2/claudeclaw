@@ -149,7 +149,7 @@ def clear_alert(state: dict, key: str):
 # --- Checks ---
 
 def check_pm2() -> list[dict]:
-    """Check PM2 processes."""
+    """Check PM2 processes and restart counts."""
     issues = []
     pm2_out = run("pm2 jlist 2>/dev/null")
     if not pm2_out:
@@ -173,6 +173,25 @@ def check_pm2() -> list[dict]:
     for name in ["ea-claude-default", "ea-claude-starscream"]:
         if name in proc_map and proc_map[name] != "online":
             issues.append({"key": f"{name}_down", "msg": f"{name}: {proc_map[name]}", "level": "warning"})
+
+    # Restart spike detection: compare current restart counts against stored baseline.
+    # Alert if any process gains >10 restarts since last check (15min window).
+    state = load_state()
+    prev_restarts = state.get("pm2_restarts", {})
+    curr_restarts = {}
+    for p in procs:
+        name = p.get("name", "")
+        restarts = p.get("pm2_env", {}).get("restart_time", 0)
+        curr_restarts[name] = restarts
+        prev = prev_restarts.get(name, restarts)  # Default to current if no baseline
+        delta = restarts - prev
+        if delta > 10:
+            issues.append({
+                "key": f"restart_spike_{name}",
+                "msg": f"{name}: {delta} restarts in last check period (total: {restarts})",
+                "level": "warning",
+            })
+    state["pm2_restarts"] = curr_restarts
 
     return issues
 
@@ -335,6 +354,75 @@ def check_dispatch_queue() -> list[dict]:
     return issues
 
 
+def check_extraction_health() -> list[dict]:
+    """Check memory extraction pipeline health.
+    Alerts if: watermark is stale (>2h behind with pending entries),
+    or extraction log shows 3+ consecutive failures."""
+    issues = []
+    if not CLAUDECLAW_DB.exists():
+        return issues
+
+    try:
+        db = sqlite3.connect(str(CLAUDECLAW_DB))
+        cursor = db.cursor()
+
+        # Check extraction_state exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='extraction_state'")
+        if not cursor.fetchone():
+            db.close()
+            return issues
+
+        # Get watermark and compare to conversation_log max
+        cursor.execute("""
+            SELECT es.chat_id, es.last_log_id, es.last_run_at, es.facts_total,
+                   (SELECT MAX(id) FROM conversation_log WHERE chat_id = es.chat_id) as max_log_id,
+                   (SELECT COUNT(*) FROM conversation_log WHERE chat_id = es.chat_id AND id > es.last_log_id) as pending
+            FROM extraction_state es
+        """)
+        for row in cursor.fetchall():
+            chat_id, last_log_id, last_run_at, facts_total, max_log_id, pending = row
+            if max_log_id is None:
+                continue
+
+            # Alert if watermark is stale and there are pending entries
+            age_hours = (datetime.now().timestamp() - last_run_at) / 3600
+            if pending > 20 and age_hours > 2:
+                issues.append({
+                    "key": f"extraction_stale_{chat_id}",
+                    "msg": f"Extraction stale: {pending} entries pending, last run {age_hours:.1f}h ago (chat {chat_id})",
+                    "level": "warning"
+                })
+
+        db.close()
+    except Exception:
+        pass
+
+    # Check extraction log for consecutive failures
+    extract_log = Path("/tmp/extract_memories.log")
+    if extract_log.exists():
+        try:
+            lines = extract_log.read_text().splitlines()
+            # Count consecutive "Fireworks call failed" or "timed out" at the tail
+            consecutive_failures = 0
+            for line in reversed(lines):
+                if "Fireworks call failed" in line or "timed out" in line:
+                    consecutive_failures += 1
+                elif "Extraction complete:" in line or "stored" in line:
+                    break  # hit a successful run, stop counting
+                # Skip non-relevant lines (timestamps, separators)
+
+            if consecutive_failures >= 3:
+                issues.append({
+                    "key": "extraction_failures",
+                    "msg": f"Extraction has {consecutive_failures} consecutive API failures in log",
+                    "level": "error" if consecutive_failures >= 6 else "warning"
+                })
+        except Exception:
+            pass
+
+    return issues
+
+
 def check_stale_cycle() -> list[dict]:
     """Check if Metroplex is active but hasn't completed a cycle recently."""
     issues = []
@@ -390,6 +478,7 @@ def main():
     all_issues.extend(check_cron_health())
     all_issues.extend(check_disk())
     all_issues.extend(check_dispatch_queue())
+    all_issues.extend(check_extraction_health())
 
     # Filter to only new/unthrottled alerts
     new_alerts = []

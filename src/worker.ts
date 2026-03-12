@@ -84,14 +84,14 @@ async function processTask(workerType: WorkerType): Promise<boolean> {
   try {
     const result = await runAgent(
       task.prompt,
-      undefined, // No session resumption for dispatch tasks
+      task.session_id ?? undefined, // Resume from chat session if available
       () => {}, // No typing indicator (no Telegram context)
       undefined, // No progress callback
       cwd, // Worker-specific CWD for persona CLAUDE.md
     );
 
     const text = result.text?.trim() || 'Task completed with no output.';
-    completeTask(task.id, text);
+    completeTask(task.id, text, result.newSessionId);
 
     const elapsed = Math.round((Date.now() - startTime) / 1000);
     logger.info(

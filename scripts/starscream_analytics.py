@@ -143,6 +143,21 @@ def init_db(db: sqlite3.Connection):
 
         CREATE INDEX IF NOT EXISTS idx_post_metrics_published
             ON post_metrics(published_at);
+
+        CREATE TABLE IF NOT EXISTS post_structure (
+            post_id TEXT PRIMARY KEY,
+            post_type TEXT DEFAULT 'INSIGHT',
+            opener_type TEXT,
+            topic_angle TEXT,
+            word_count INTEGER,
+            specificity_score INTEGER,
+            has_analogy INTEGER DEFAULT 0,
+            has_named_concept INTEGER DEFAULT 0,
+            closer_type TEXT,
+            uses_second_person INTEGER DEFAULT 0,
+            paragraph_count INTEGER,
+            analyzed_at TEXT
+        );
     """)
 
 
@@ -413,11 +428,34 @@ def build_performance_brief(db: sqlite3.Connection) -> str:
 
     # Topic analysis (infer topic from content preview keywords)
     topic_map = {
-        "healthcare": ["healthcare", "hospital", "nurse", "patient", "clinical", "ehr", "medical", "bedside"],
-        "supply chain": ["supply chain", "scm", "procurement", "logistics", "shipment", "inventory", "warehouse"],
-        "ai security": ["security", "audit", "observability", "vulnerability", "forensic", "kill switch", "compliance"],
-        "ai agents": ["agent", "autonomous", "agentic", "level 5", "dark factory", "automation"],
-        "m2ai / personal": ["m2ai", "snow-town", "st metro", "my ", "i built", "i shipped", "this week"],
+        # Primary topics (80% target)
+        "agents vs. workflows": [
+            "workflow", "pipeline", "orchestrat", "agent", "autonomous", "agentic",
+            "reasoning", "chef", "recipe", "automat", "step-by-step", "rule-based",
+        ],
+        "healthcare ai": [
+            "healthcare", "hospital", "nurse", "patient", "clinical", "ehr",
+            "medical", "bedside", "frontline", "caregiver", "health system",
+        ],
+        # Secondary topics (20% target)
+        "m2ai milestones": [
+            "m2ai", "i built", "i shipped", "this week", "we shipped", "milestone",
+            "launched", "release", "demo", "case study",
+        ],
+        # Tie-in only (not standalone)
+        "st metro / l5": [
+            "snow-town", "st metro", "level 5", "dark factory", "l5 autonomy",
+            "self-improving", "autonomous software",
+        ],
+        # Retired (tracked for historical data, no longer posted)
+        "supply chain (retired)": [
+            "supply chain", "scm", "procurement", "logistics", "shipment",
+            "inventory", "warehouse",
+        ],
+        "ai security (retired)": [
+            "security", "audit", "observability", "vulnerability", "forensic",
+            "kill switch", "compliance",
+        ],
     }
 
     topic_stats: dict[str, list[dict]] = {}
@@ -452,47 +490,72 @@ def build_performance_brief(db: sqlite3.Connection) -> str:
             lines.append(f"| {topic} | {len(stats)} | {avg_eng:.1f}% | {avg_imp:.0f} | {total_l} |")
         lines.append("")
 
-    # Content insights
-    lines.append("## Content Guidance")
+    # --- Pattern extraction (what's working vs what's not) ---
+    lines.append("## What's Working")
+    working_patterns = []
 
     if posts and posts[0][7] > 0:
         best = posts[0]
-        best_preview = (best[1] or "")[:60]
-        lines.append(f"- **Best performing content** starts with: \"{best_preview}...\"")
+        best_preview = (best[1] or "")[:80]
+        working_patterns.append(f"Top post opens with: \"{best_preview}...\"")
 
-    # Check what engagement patterns work
+    # Check engagement patterns
     posts_with_likes = [p for p in posts if p[2] > 0]
     posts_without_likes = [p for p in posts if p[2] == 0]
     if posts_with_likes and posts_without_likes:
         avg_imp_liked = sum(p[5] for p in posts_with_likes) / len(posts_with_likes)
         avg_imp_unliked = sum(p[5] for p in posts_without_likes) / len(posts_without_likes)
-        lines.append(
-            f"- Posts with likes avg {avg_imp_liked:.0f} impressions vs "
-            f"{avg_imp_unliked:.0f} for posts without"
-        )
+        if avg_imp_liked > avg_imp_unliked * 1.5:
+            working_patterns.append(
+                f"Posts that get likes also get {avg_imp_liked:.0f} avg impressions "
+                f"vs {avg_imp_unliked:.0f} for posts without likes (algorithm boost from engagement)"
+            )
 
-    # Posting time analysis (from published_at timestamps)
-    hour_stats: dict[int, list[float]] = {}
-    for p in posts:
-        pub = p[8]
-        if pub:
-            try:
-                dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
-                # Convert UTC to CST (UTC-6)
-                cst_hour = (dt.hour - 6) % 24
-                hour_stats.setdefault(cst_hour, []).append(p[7])
-            except (ValueError, AttributeError):
-                pass
+    if ranked:
+        best_topic = ranked[0][0]
+        best_stats = ranked[0][1]
+        avg_eng = sum(s["engagement"] for s in best_stats) / len(best_stats)
+        working_patterns.append(f"Best topic: {best_topic} ({avg_eng:.1f}% avg engagement)")
 
-    if hour_stats:
-        best_hour = max(hour_stats.items(), key=lambda x: sum(x[1]) / len(x[1]))
-        lines.append(f"- Best posting hour (CST): {best_hour[0]}:00 ({sum(best_hour[1]) / len(best_hour[1]):.1f}% avg engagement)")
+    if working_patterns:
+        for wp in working_patterns:
+            lines.append(f"- {wp}")
+    else:
+        lines.append("- Not enough data yet to identify patterns")
+    lines.append("")
 
-    # Follower growth trend
+    lines.append("## What's Not Working")
+    not_working = []
+    if ranked and len(ranked) > 1:
+        worst_topic = ranked[-1][0]
+        worst_stats = ranked[-1][1]
+        avg_eng = sum(s["engagement"] for s in worst_stats) / len(worst_stats)
+        if avg_eng < 1.0:
+            not_working.append(f"{worst_topic}: {avg_eng:.1f}% engagement. Consider dropping or changing the angle.")
+
+    zero_engagement = [p for p in posts if p[7] == 0.0]
+    if zero_engagement:
+        not_working.append(f"{len(zero_engagement)} of {len(posts)} posts got zero engagement")
+        for p in zero_engagement[:2]:
+            preview = (p[1] or "")[:60]
+            not_working.append(f"  Zero-engagement opener: \"{preview}...\"")
+
+    if not_working:
+        for nw in not_working:
+            lines.append(f"- {nw}")
+    else:
+        lines.append("- Nothing flagged yet")
+    lines.append("")
+
+    # Follower context
     follower_history = db.execute(
         """SELECT collected_at, total_followers FROM follower_metrics
            ORDER BY collected_at DESC LIMIT 14"""
     ).fetchall()
+
+    lines.append("## Context for This Run")
+    lines.append(f"- Posts tracked: {len(posts)}")
+    lines.append(f"- Followers: {followers}")
 
     if len(follower_history) >= 2:
         latest = follower_history[0][1]
@@ -502,18 +565,7 @@ def build_performance_brief(db: sqlite3.Connection) -> str:
                        datetime.fromisoformat(follower_history[-1][0])).days)
         rate = delta / days if days > 0 else 0
         direction = "+" if delta >= 0 else ""
-        lines.append(f"- Follower growth: {direction}{delta} ({direction}{rate:.1f}/day)")
-
-    lines.append("")
-    lines.append("## Action Items for Next Post")
-    if ranked:
-        best_topic = ranked[0][0]
-        worst_topic = ranked[-1][0] if len(ranked) > 1 else None
-        lines.append(f"- **Lean into**: {best_topic} (highest engagement)")
-        if worst_topic and worst_topic != best_topic:
-            lines.append(f"- **Rethink approach for**: {worst_topic} (lowest engagement)")
-    lines.append("- Check if posts with questions vs. declarative closers perform differently")
-    lines.append("- Monitor reach-to-impression ratio for algorithm signal strength")
+        lines.append(f"- Follower trend: {direction}{delta} ({direction}{rate:.1f}/day)")
 
     return "\n".join(lines)
 

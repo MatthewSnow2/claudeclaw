@@ -11,6 +11,9 @@ vi.mock('./db.js', () => ({
   decayMemoryVectors: vi.fn(),
   logConversationTurn: vi.fn(),
   pruneConversationLog: vi.fn(),
+  getActiveTopic: vi.fn().mockReturnValue(null),
+  getSessionDirectives: vi.fn().mockReturnValue([]),
+  getRecentConversation: vi.fn().mockReturnValue([]),
 }));
 
 import {

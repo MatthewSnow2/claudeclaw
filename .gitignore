@@ -46,3 +46,4 @@ venv/
 
 # Windows artifacts
 nul
+.firecrawl/

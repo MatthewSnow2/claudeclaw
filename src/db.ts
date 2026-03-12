@@ -80,6 +80,19 @@ function createSchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_dispatch_status ON dispatch_queue(status);
     CREATE INDEX IF NOT EXISTS idx_dispatch_worker ON dispatch_queue(worker_type, status);
 
+    CREATE TABLE IF NOT EXISTS hive_mind (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      worker      TEXT NOT NULL,
+      event_type  TEXT NOT NULL,
+      summary     TEXT NOT NULL,
+      detail      TEXT,
+      cost_usd    REAL DEFAULT 0,
+      created_at  INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hive_mind_time ON hive_mind(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_hive_mind_worker ON hive_mind(worker, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS conversation_log (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       chat_id     TEXT NOT NULL,
@@ -168,6 +181,35 @@ export function runMigrations(database: Database.Database): void {
   database.exec(
     'CREATE INDEX IF NOT EXISTS idx_memvec_category ON memory_vectors(chat_id, category)',
   );
+
+  // Pipeline sort_order migration
+  const plCols = database
+    .prepare("PRAGMA table_info('pipeline_items')")
+    .all() as Array<{ name: string }>;
+  const plExisting = new Set(plCols.map((c) => c.name));
+  if (plExisting.size > 0 && !plExisting.has('sort_order')) {
+    database.exec('ALTER TABLE pipeline_items ADD COLUMN sort_order INTEGER DEFAULT 0');
+  }
+
+  // Fix 1: Active topic column on sessions table
+  const sessionCols = database
+    .prepare("PRAGMA table_info('sessions')")
+    .all() as Array<{ name: string }>;
+  const sessionExisting = new Set(sessionCols.map((c) => c.name));
+  if (!sessionExisting.has('active_topic')) {
+    database.exec('ALTER TABLE sessions ADD COLUMN active_topic TEXT');
+  }
+
+  // Fix 3: Session directives table (explicit user instructions that persist within a session)
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS session_directives (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id     TEXT NOT NULL,
+      directive   TEXT NOT NULL,
+      created_at  INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_directives_chat ON session_directives(chat_id);
+  `);
 }
 
 /** @internal - exported for tests */
@@ -400,13 +442,14 @@ export function enqueueTask(
   chatId: string,
   prompt: string,
   workerType: WorkerType,
+  sessionId?: string,
 ): string {
   const id = crypto.randomUUID();
   const now = Math.floor(Date.now() / 1000);
   db.prepare(
-    `INSERT INTO dispatch_queue (id, chat_id, prompt, worker_type, status, created_at)
-     VALUES (?, ?, ?, ?, 'queued', ?)`,
-  ).run(id, chatId, prompt, workerType, now);
+    `INSERT INTO dispatch_queue (id, chat_id, prompt, worker_type, status, session_id, created_at)
+     VALUES (?, ?, ?, ?, 'queued', ?, ?)`,
+  ).run(id, chatId, prompt, workerType, sessionId ?? null, now);
   return id;
 }
 
@@ -436,11 +479,34 @@ export function claimTask(workerType: WorkerType): DispatchTask | undefined {
   return claimTx();
 }
 
-export function completeTask(id: string, result: string): void {
+export function completeTask(id: string, result: string, newSessionId?: string): void {
   const now = Math.floor(Date.now() / 1000);
   db.prepare(
-    `UPDATE dispatch_queue SET status = 'completed', result = ?, completed_at = ? WHERE id = ?`,
-  ).run(result, now, id);
+    `UPDATE dispatch_queue SET status = 'completed', result = ?, completed_at = ?, session_id = COALESCE(?, session_id) WHERE id = ?`,
+  ).run(result, now, newSessionId ?? null, id);
+
+  // Persist the new session_id back to the chat so the next task (or inline
+  // response) resumes from where this worker left off.
+  if (newSessionId) {
+    const task = db.prepare(`SELECT chat_id FROM dispatch_queue WHERE id = ?`).get(id) as { chat_id: string } | undefined;
+    if (task) {
+      setSession(task.chat_id, newSessionId);
+    }
+  }
+
+  // Emit hive mind event for completed dispatch
+  const taskRow = db.prepare(`SELECT worker_type, prompt, started_at FROM dispatch_queue WHERE id = ?`)
+    .get(id) as { worker_type: string; prompt: string; started_at: number | null } | undefined;
+  if (taskRow) {
+    const duration = taskRow.started_at ? now - taskRow.started_at : 0;
+    const preview = taskRow.prompt.length > 80 ? taskRow.prompt.slice(0, 80) + '...' : taskRow.prompt;
+    emitHiveMindEvent(
+      taskRow.worker_type,
+      'task_completed',
+      `Completed: ${preview}`,
+      `Duration: ${duration}s | Task ID: ${id}`,
+    );
+  }
 }
 
 export function failTask(id: string, error: string): void {
@@ -448,6 +514,19 @@ export function failTask(id: string, error: string): void {
   db.prepare(
     `UPDATE dispatch_queue SET status = 'failed', error = ?, completed_at = ? WHERE id = ?`,
   ).run(error, now, id);
+
+  // Emit hive mind event for failed dispatch
+  const taskRow = db.prepare(`SELECT worker_type, prompt FROM dispatch_queue WHERE id = ?`)
+    .get(id) as { worker_type: string; prompt: string } | undefined;
+  if (taskRow) {
+    const preview = taskRow.prompt.length > 80 ? taskRow.prompt.slice(0, 80) + '...' : taskRow.prompt;
+    emitHiveMindEvent(
+      taskRow.worker_type,
+      'task_failed',
+      `Failed: ${preview}`,
+      `Error: ${error.slice(0, 200)} | Task ID: ${id}`,
+    );
+  }
 }
 
 export function getPendingResults(): DispatchTask[] {
@@ -463,6 +542,15 @@ export function getPendingResults(): DispatchTask[] {
 export function markNotified(id: string): void {
   db.prepare(
     `UPDATE dispatch_queue SET notified = 1 WHERE id = ?`,
+  ).run(id);
+}
+
+export function reDispatchTask(id: string): void {
+  db.prepare(
+    `UPDATE dispatch_queue
+     SET status = 'queued', result = NULL, error = NULL,
+         started_at = NULL, completed_at = NULL, notified = 0
+     WHERE id = ?`,
   ).run(id);
 }
 
@@ -723,6 +811,107 @@ export function setExtractionWatermark(chatId: string, lastLogId: number, factsT
   ).run(chatId, lastLogId, now, factsTotal);
 }
 
+// ── Pipeline Management ──────────────────────────────────────────────
+
+export type PipelineStatus = 'active' | 'queued' | 'research' | 'shelved' | 'killed' | 'completed';
+
+export interface PipelineItem {
+  id: string;
+  title: string;
+  description: string | null;
+  status: PipelineStatus;
+  tier: string;
+  worker_type: string | null;
+  source: string;
+  effort_hours: number | null;
+  deadline: string | null;
+  depends_on: string | null;
+  created_at: number;
+  updated_at: number;
+  completed_at: number | null;
+  shelved_reason: string | null;
+  resume_trigger: string | null;
+  sort_order: number;
+}
+
+const VALID_PIPELINE_STATUSES: Set<string> = new Set([
+  'active', 'queued', 'research', 'shelved', 'killed', 'completed',
+]);
+
+export function getPipelineItems(): PipelineItem[] {
+  return db
+    .prepare(
+      `SELECT * FROM pipeline_items
+       WHERE status != 'completed'
+       ORDER BY
+         CASE status
+           WHEN 'active' THEN 1
+           WHEN 'queued' THEN 2
+           WHEN 'research' THEN 3
+           WHEN 'shelved' THEN 4
+           WHEN 'killed' THEN 5
+         END,
+         sort_order ASC,
+         CASE tier
+           WHEN 'p1' THEN 1 WHEN 'p2' THEN 2 WHEN 'p3' THEN 3 WHEN 'parked' THEN 4
+         END,
+         updated_at DESC`,
+    )
+    .all() as PipelineItem[];
+}
+
+export function updatePipelineStatus(
+  id: string,
+  newStatus: string,
+  reason?: string,
+  decidedBy = 'dashboard',
+): PipelineItem | null {
+  if (!VALID_PIPELINE_STATUSES.has(newStatus)) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+
+  const tx = db.transaction(() => {
+    const existing = db
+      .prepare('SELECT id FROM pipeline_items WHERE id = ?')
+      .get(id) as { id: string } | undefined;
+    if (!existing) return null;
+
+    db.prepare(
+      `UPDATE pipeline_items SET status = ?, updated_at = ?,
+       completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END
+       WHERE id = ?`,
+    ).run(newStatus, now, newStatus, now, id);
+
+    db.prepare(
+      `INSERT INTO pipeline_decisions (pipeline_item_id, decision, reason, decided_by, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(id, newStatus === 'killed' ? 'kill' : 'move', reason ?? null, decidedBy, now);
+
+    return db
+      .prepare('SELECT * FROM pipeline_items WHERE id = ?')
+      .get(id) as PipelineItem;
+  });
+
+  return tx();
+}
+
+export function updatePipelineOrder(
+  items: Array<{ id: string; sort_order: number }>,
+): void {
+  const stmt = db.prepare(
+    'UPDATE pipeline_items SET sort_order = ?, updated_at = ? WHERE id = ?',
+  );
+  const now = Math.floor(Date.now() / 1000);
+
+  const tx = db.transaction(() => {
+    for (const item of items) {
+      stmt.run(item.sort_order, now, item.id);
+    }
+  });
+
+  tx();
+}
+
 export function getSessionTokenUsage(sessionId: string): SessionTokenSummary | null {
   const row = db
     .prepare(
@@ -767,4 +956,82 @@ export function getSessionTokenUsage(sessionId: string): SessionTokenSummary | n
     firstTurnAt: row.firstTurnAt,
     lastTurnAt: row.lastTurnAt,
   };
+}
+
+// ── Active Topic (Fix 1) ─────────────────────────────────────────────
+
+export function getActiveTopic(chatId: string): string | null {
+  const row = db
+    .prepare('SELECT active_topic FROM sessions WHERE chat_id = ?')
+    .get(chatId) as { active_topic: string | null } | undefined;
+  return row?.active_topic ?? null;
+}
+
+export function setActiveTopic(chatId: string, topic: string): void {
+  db.prepare(
+    'UPDATE sessions SET active_topic = ? WHERE chat_id = ?',
+  ).run(topic, chatId);
+}
+
+// ── Session Directives (Fix 3) ───────────────────────────────────────
+
+export interface SessionDirective {
+  id: number;
+  chat_id: string;
+  directive: string;
+  created_at: number;
+}
+
+export function addSessionDirective(chatId: string, directive: string): void {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    'INSERT INTO session_directives (chat_id, directive, created_at) VALUES (?, ?, ?)',
+  ).run(chatId, directive, now);
+}
+
+export function getSessionDirectives(chatId: string): SessionDirective[] {
+  return db
+    .prepare('SELECT * FROM session_directives WHERE chat_id = ? ORDER BY created_at ASC')
+    .all(chatId) as SessionDirective[];
+}
+
+export function clearSessionDirectives(chatId: string): void {
+  db.prepare('DELETE FROM session_directives WHERE chat_id = ?').run(chatId);
+}
+
+// ── Hive Mind ────────────────────────────────────────────────────────
+
+export interface HiveMindEntry {
+  id: number;
+  worker: string;
+  event_type: string;
+  summary: string;
+  detail: string | null;
+  cost_usd: number;
+  created_at: number;
+}
+
+export function emitHiveMindEvent(
+  worker: string,
+  eventType: string,
+  summary: string,
+  detail?: string,
+  costUsd?: number,
+): void {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    `INSERT INTO hive_mind (worker, event_type, summary, detail, cost_usd, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(worker, eventType, summary, detail ?? null, costUsd ?? 0, now);
+}
+
+export function getHiveMindEntries(limit: number = 30, worker?: string): HiveMindEntry[] {
+  if (worker) {
+    return db
+      .prepare('SELECT * FROM hive_mind WHERE worker = ? ORDER BY created_at DESC LIMIT ?')
+      .all(worker, limit) as HiveMindEntry[];
+  }
+  return db
+    .prepare('SELECT * FROM hive_mind ORDER BY created_at DESC LIMIT ?')
+    .all(limit) as HiveMindEntry[];
 }
