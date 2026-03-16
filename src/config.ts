@@ -19,6 +19,7 @@ const envConfig = readEnvFile([
   'CLAUDECLAW_CONFIG',
   'DB_ENCRYPTION_KEY',
   'GOOGLE_API_KEY',
+  'ALLOWED_CHAT_IDS',
 ]);
 
 // ── Multi-agent support ──────────────────────────────────────────────
@@ -53,6 +54,14 @@ export const TELEGRAM_BOT_TOKEN =
 // Only respond to this Telegram chat ID. Set this after getting your ID via /chatid.
 export const ALLOWED_CHAT_ID =
   process.env.ALLOWED_CHAT_ID || envConfig.ALLOWED_CHAT_ID || '';
+
+/** Comma-separated list of allowed chat IDs (supports both DM and Forum Group). Falls back to ALLOWED_CHAT_ID. */
+export const ALLOWED_CHAT_IDS: string[] = (() => {
+  const raw = process.env.ALLOWED_CHAT_IDS || envConfig.ALLOWED_CHAT_IDS || '';
+  if (raw) return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (ALLOWED_CHAT_ID) return [ALLOWED_CHAT_ID];
+  return [];
+})();
 
 export const WHATSAPP_ENABLED =
   (process.env.WHATSAPP_ENABLED || envConfig.WHATSAPP_ENABLED || '').toLowerCase() === 'true';
@@ -135,3 +144,13 @@ export const DB_ENCRYPTION_KEY =
 // Google API key for Gemini (memory extraction + consolidation)
 export const GOOGLE_API_KEY =
   process.env.GOOGLE_API_KEY || envConfig.GOOGLE_API_KEY || '';
+
+// ── Forum Topics ────────────────────────────────────────────────
+
+/**
+ * Build a composite key for per-topic state and queue isolation.
+ * Returns `chatId` for DMs (topicId is null/undefined) or `chatId:topicId` for Forum Topics.
+ */
+export function contextKey(chatId: string, topicId?: string | null): string {
+  return topicId ? `${chatId}:${topicId}` : chatId;
+}

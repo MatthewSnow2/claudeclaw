@@ -1,5 +1,7 @@
 import { EventEmitter } from 'node:events';
 
+import { contextKey } from './config.js';
+
 // ── Bot info (set once from onStart, read by dashboard) ─────────────
 
 let _botUsername = '';
@@ -31,6 +33,7 @@ export function setTelegramConnected(v: boolean): void {
 export interface ChatEvent {
   type: 'user_message' | 'assistant_message' | 'processing' | 'progress' | 'error' | 'hive_mind';
   chatId: string;
+  topicId?: string | null;
   agentId?: string;
   content?: string;
   source?: 'telegram' | 'dashboard';
@@ -49,33 +52,47 @@ export function emitChatEvent(event: Omit<ChatEvent, 'timestamp'>): void {
 
 // ── Processing state ─────────────────────────────────────────────────
 
-let _processing = false;
-let _processingChatId = '';
+const _processingKeys = new Set<string>();
 
-export function setProcessing(chatId: string, v: boolean): void {
-  _processing = v;
-  _processingChatId = v ? chatId : '';
-  emitChatEvent({ type: 'processing', chatId, processing: v });
+export function setProcessing(chatId: string, v: boolean, topicId?: string | null): void {
+  const key = contextKey(chatId, topicId);
+  if (v) {
+    _processingKeys.add(key);
+  } else {
+    _processingKeys.delete(key);
+  }
+  emitChatEvent({ type: 'processing', chatId, topicId, processing: v });
 }
 
-export function getIsProcessing(): { processing: boolean; chatId: string } {
-  return { processing: _processing, chatId: _processingChatId };
+export function getIsProcessing(chatId?: string, topicId?: string | null): { processing: boolean; chatId: string } {
+  if (chatId) {
+    const key = contextKey(chatId, topicId);
+    return { processing: _processingKeys.has(key), chatId };
+  }
+  // Backward compat: if no chatId given, return true if anything is processing
+  if (_processingKeys.size > 0) {
+    const first = _processingKeys.values().next().value as string;
+    return { processing: true, chatId: first };
+  }
+  return { processing: false, chatId: '' };
 }
 
 // ── Active query abort ──────────────────────────────────────────────
 
 const _activeAbort = new Map<string, AbortController>();
 
-export function setActiveAbort(chatId: string, ctrl: AbortController | null): void {
-  if (ctrl) _activeAbort.set(chatId, ctrl);
-  else _activeAbort.delete(chatId);
+export function setActiveAbort(chatId: string, ctrl: AbortController | null, topicId?: string | null): void {
+  const key = contextKey(chatId, topicId);
+  if (ctrl) _activeAbort.set(key, ctrl);
+  else _activeAbort.delete(key);
 }
 
-export function abortActiveQuery(chatId: string): boolean {
-  const ctrl = _activeAbort.get(chatId);
+export function abortActiveQuery(chatId: string, topicId?: string | null): boolean {
+  const key = contextKey(chatId, topicId);
+  const ctrl = _activeAbort.get(key);
   if (ctrl) {
     ctrl.abort();
-    _activeAbort.delete(chatId);
+    _activeAbort.delete(key);
     return true;
   }
   return false;

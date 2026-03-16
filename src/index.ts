@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import yaml from 'js-yaml';
 
 import { loadAgentConfig, resolveAgentDir, resolveAgentClaudeMd } from './agent-config.js';
 import { createBot } from './bot.js';
@@ -53,11 +54,30 @@ if (AGENT_ID !== 'main') {
       systemPrompt = fs.readFileSync(externalClaudeMd, 'utf-8');
     } catch { /* unreadable */ }
     if (systemPrompt) {
+      // Load optional obsidian config from CLAUDECLAW_CONFIG/agent.yaml
+      let obsidian: { vault: string; folders: string[]; readOnly?: string[] } | undefined;
+      const mainYaml = path.join(CLAUDECLAW_CONFIG, 'agent.yaml');
+      if (fs.existsSync(mainYaml)) {
+        try {
+          const raw = yaml.load(fs.readFileSync(mainYaml, 'utf-8')) as Record<string, unknown>;
+          const obsRaw = raw['obsidian'] as Record<string, unknown> | undefined;
+          if (obsRaw) {
+            obsidian = {
+              vault: obsRaw['vault'] as string,
+              folders: (obsRaw['folders'] as string[]) ?? [],
+              readOnly: (obsRaw['read_only'] as string[]) ?? [],
+            };
+            logger.info({ vault: obsidian.vault, folders: obsidian.folders }, 'Loaded Obsidian config for main bot');
+          }
+        } catch { /* invalid yaml, skip */ }
+      }
+
       setAgentOverrides({
         agentId: 'main',
         botToken: activeBotToken,
         cwd: PROJECT_ROOT,
         systemPrompt,
+        obsidian,
       });
       logger.info({ source: externalClaudeMd }, 'Loaded CLAUDE.md from CLAUDECLAW_CONFIG');
     }

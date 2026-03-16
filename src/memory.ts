@@ -119,11 +119,12 @@ export function saveConversationTurn(
   claudeResponse: string,
   sessionId?: string,
   agentId = 'main',
+  topicId?: string | null,
 ): void {
   try {
     // Always log full conversation to conversation_log (for /respin)
-    logConversationTurn(chatId, 'user', userMessage, sessionId, agentId);
-    logConversationTurn(chatId, 'assistant', claudeResponse, sessionId, agentId);
+    logConversationTurn(chatId, 'user', userMessage, sessionId, agentId, topicId);
+    logConversationTurn(chatId, 'assistant', claudeResponse, sessionId, agentId, topicId);
   } catch (err) {
     logger.error({ err }, 'Failed to log conversation turn');
   }

@@ -413,6 +413,51 @@ function runMigrations(database: Database.Database): void {
     database.exec(`ALTER TABLE memories ADD COLUMN embedding TEXT`);
     logger.info('Migration: added embedding column to memories table');
   }
+
+  // ── Forum Topics: add topic_id columns ──────────────────────────
+  const sessionColsForTopic = database.prepare(`PRAGMA table_info(sessions)`).all() as Array<{ name: string }>;
+  if (!sessionColsForTopic.some((c) => c.name === 'topic_id')) {
+    database.exec(`
+      CREATE TABLE sessions_ft (
+        chat_id    TEXT NOT NULL,
+        topic_id   TEXT NOT NULL DEFAULT '',
+        agent_id   TEXT NOT NULL DEFAULT 'main',
+        session_id TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (chat_id, topic_id, agent_id)
+      );
+      INSERT INTO sessions_ft (chat_id, topic_id, agent_id, session_id, updated_at)
+        SELECT chat_id, '', agent_id, session_id, updated_at FROM sessions;
+      DROP TABLE sessions;
+      ALTER TABLE sessions_ft RENAME TO sessions;
+    `);
+    logger.info('Migration: added topic_id to sessions table');
+  }
+
+  const convoColsForTopic = database.prepare(`PRAGMA table_info(conversation_log)`).all() as Array<{ name: string }>;
+  if (!convoColsForTopic.some((c) => c.name === 'topic_id')) {
+    database.exec(`ALTER TABLE conversation_log ADD COLUMN topic_id TEXT`);
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_convo_log_topic ON conversation_log(chat_id, topic_id, created_at DESC)`);
+    logger.info('Migration: added topic_id to conversation_log');
+  }
+
+  const tokenColsForTopic = database.prepare(`PRAGMA table_info(token_usage)`).all() as Array<{ name: string }>;
+  if (!tokenColsForTopic.some((c) => c.name === 'topic_id')) {
+    database.exec(`ALTER TABLE token_usage ADD COLUMN topic_id TEXT`);
+    logger.info('Migration: added topic_id to token_usage');
+  }
+
+  const hiveColsForTopic = database.prepare(`PRAGMA table_info(hive_mind)`).all() as Array<{ name: string }>;
+  if (!hiveColsForTopic.some((c) => c.name === 'topic_id')) {
+    database.exec(`ALTER TABLE hive_mind ADD COLUMN topic_id TEXT`);
+    logger.info('Migration: added topic_id to hive_mind');
+  }
+
+  const interAgentColsForTopic = database.prepare(`PRAGMA table_info(inter_agent_tasks)`).all() as Array<{ name: string }>;
+  if (!interAgentColsForTopic.some((c) => c.name === 'topic_id')) {
+    database.exec(`ALTER TABLE inter_agent_tasks ADD COLUMN topic_id TEXT`);
+    logger.info('Migration: added topic_id to inter_agent_tasks');
+  }
 }
 
 /** @internal - for tests only. Creates a fresh in-memory database. */
@@ -425,21 +470,21 @@ export function _initTestDatabase(): void {
   runMigrations(db);
 }
 
-export function getSession(chatId: string, agentId = 'main'): string | undefined {
+export function getSession(chatId: string, agentId = 'main', topicId?: string | null): string | undefined {
   const row = db
-    .prepare('SELECT session_id FROM sessions WHERE chat_id = ? AND agent_id = ?')
-    .get(chatId, agentId) as { session_id: string } | undefined;
+    .prepare('SELECT session_id FROM sessions WHERE chat_id = ? AND COALESCE(topic_id, \'\') = ? AND agent_id = ?')
+    .get(chatId, topicId ?? '', agentId) as { session_id: string } | undefined;
   return row?.session_id;
 }
 
-export function setSession(chatId: string, sessionId: string, agentId = 'main'): void {
+export function setSession(chatId: string, sessionId: string, agentId = 'main', topicId?: string | null): void {
   db.prepare(
-    'INSERT OR REPLACE INTO sessions (chat_id, agent_id, session_id, updated_at) VALUES (?, ?, ?, ?)',
-  ).run(chatId, agentId, sessionId, new Date().toISOString());
+    'INSERT OR REPLACE INTO sessions (chat_id, topic_id, agent_id, session_id, updated_at) VALUES (?, ?, ?, ?, ?)',
+  ).run(chatId, topicId ?? '', agentId, sessionId, new Date().toISOString());
 }
 
-export function clearSession(chatId: string, agentId = 'main'): void {
-  db.prepare('DELETE FROM sessions WHERE chat_id = ? AND agent_id = ?').run(chatId, agentId);
+export function clearSession(chatId: string, agentId = 'main', topicId?: string | null): void {
+  db.prepare('DELETE FROM sessions WHERE chat_id = ? AND COALESCE(topic_id, \'\') = ? AND agent_id = ?').run(chatId, topicId ?? '', agentId);
 }
 
 // ── Memory (V2: structured with LLM extraction) ────────────────────
@@ -954,21 +999,31 @@ export function logConversationTurn(
   content: string,
   sessionId?: string,
   agentId = 'main',
+  topicId?: string | null,
 ): void {
   const now = Math.floor(Date.now() / 1000);
   db.prepare(
-    `INSERT INTO conversation_log (chat_id, session_id, role, content, created_at, agent_id)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(chatId, sessionId ?? null, role, content, now, agentId);
+    `INSERT INTO conversation_log (chat_id, session_id, role, content, created_at, agent_id, topic_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(chatId, sessionId ?? null, role, content, now, agentId, topicId ?? null);
 }
 
 export function getRecentConversation(
   chatId: string,
   limit = 20,
+  topicId?: string | null,
 ): ConversationTurn[] {
+  if (topicId) {
+    return db
+      .prepare(
+        `SELECT * FROM conversation_log WHERE chat_id = ? AND topic_id = ?
+         ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(chatId, topicId, limit) as ConversationTurn[];
+  }
   return db
     .prepare(
-      `SELECT * FROM conversation_log WHERE chat_id = ?
+      `SELECT * FROM conversation_log WHERE chat_id = ? AND topic_id IS NULL
        ORDER BY created_at DESC LIMIT ?`,
     )
     .all(chatId, limit) as ConversationTurn[];
@@ -983,23 +1038,27 @@ export function getConversationPage(
   chatId: string,
   limit = 40,
   beforeId?: number,
+  topicId?: string | null,
 ): ConversationTurn[] {
+  const topicFilter = topicId ? 'AND topic_id = ?' : 'AND topic_id IS NULL';
+  const topicParam = topicId ? [topicId] : [];
+
   if (beforeId) {
     return db
       .prepare(
         `SELECT * FROM conversation_log
-         WHERE chat_id = ? AND id < ?
+         WHERE chat_id = ? ${topicFilter} AND id < ?
          ORDER BY id DESC LIMIT ?`,
       )
-      .all(chatId, beforeId, limit) as ConversationTurn[];
+      .all(chatId, ...topicParam, beforeId, limit) as ConversationTurn[];
   }
   return db
     .prepare(
       `SELECT * FROM conversation_log
-       WHERE chat_id = ?
+       WHERE chat_id = ? ${topicFilter}
        ORDER BY id DESC LIMIT ?`,
     )
-    .all(chatId, limit) as ConversationTurn[];
+    .all(chatId, ...topicParam, limit) as ConversationTurn[];
 }
 
 /**
@@ -1113,12 +1172,13 @@ export function saveTokenUsage(
   costUsd: number,
   didCompact: boolean,
   agentId = 'main',
+  topicId?: string | null,
 ): void {
   const now = Math.floor(Date.now() / 1000);
   db.prepare(
-    `INSERT INTO token_usage (chat_id, session_id, input_tokens, output_tokens, cache_read, context_tokens, cost_usd, did_compact, created_at, agent_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(chatId, sessionId ?? null, inputTokens, outputTokens, cacheRead, contextTokens, costUsd, didCompact ? 1 : 0, now, agentId);
+    `INSERT INTO token_usage (chat_id, session_id, input_tokens, output_tokens, cache_read, context_tokens, cost_usd, did_compact, created_at, agent_id, topic_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(chatId, sessionId ?? null, inputTokens, outputTokens, cacheRead, contextTokens, costUsd, didCompact ? 1 : 0, now, agentId, topicId ?? null);
 }
 
 export interface SessionTokenSummary {
@@ -1334,12 +1394,13 @@ export function logToHiveMind(
   action: string,
   summary: string,
   artifacts?: string,
+  topicId?: string | null,
 ): void {
   const now = Math.floor(Date.now() / 1000);
   db.prepare(
-    `INSERT INTO hive_mind (agent_id, chat_id, action, summary, artifacts, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(agentId, chatId, action, summary, artifacts ?? null, now);
+    `INSERT INTO hive_mind (agent_id, chat_id, action, summary, artifacts, created_at, topic_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(agentId, chatId, action, summary, artifacts ?? null, now, topicId ?? null);
 }
 
 export function getHiveMindEntries(limit = 20, agentId?: string): HiveMindEntry[] {
@@ -1382,10 +1443,18 @@ export function getAgentTokenStats(agentId: string): { todayCost: number; todayT
   return { ...today, allTimeCost: allTime.allTimeCost };
 }
 
-export function getAgentRecentConversation(agentId: string, chatId: string, limit = 4): ConversationTurn[] {
+export function getAgentRecentConversation(agentId: string, chatId: string, limit = 4, topicId?: string | null): ConversationTurn[] {
+  if (topicId) {
+    return db
+      .prepare(
+        `SELECT * FROM conversation_log WHERE agent_id = ? AND chat_id = ? AND topic_id = ?
+         ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(agentId, chatId, topicId, limit) as ConversationTurn[];
+  }
   return db
     .prepare(
-      `SELECT * FROM conversation_log WHERE agent_id = ? AND chat_id = ?
+      `SELECT * FROM conversation_log WHERE agent_id = ? AND chat_id = ? AND topic_id IS NULL
        ORDER BY created_at DESC LIMIT ?`,
     )
     .all(agentId, chatId, limit) as ConversationTurn[];
