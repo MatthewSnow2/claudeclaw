@@ -118,11 +118,30 @@ export const TYPING_REFRESH_MS = 4000;
 
 // Maximum time (ms) an agent query can run before being auto-aborted.
 // Prevents runaway commands (e.g. recursive `find /`) from blocking the bot indefinitely.
-// Default: 5 minutes. Override via AGENT_TIMEOUT_MS in .env.
+// Default: 15 minutes — raised from 5m because Data regularly does multi-file builds,
+// project scaffolding, and dashboard changes that legitimately take 10-12 minutes.
+// Override via AGENT_TIMEOUT_MS in .env.
 export const AGENT_TIMEOUT_MS = parseInt(
-  process.env.AGENT_TIMEOUT_MS || envConfig.AGENT_TIMEOUT_MS || '300000',
+  process.env.AGENT_TIMEOUT_MS || envConfig.AGENT_TIMEOUT_MS || '900000',
   10,
 );
+
+// For simple/conversational messages, use a shorter timeout to fail fast.
+// A message is "complex" if it mentions build/create/scaffold/implement/write/fix
+// or is longer than 300 chars. Complex tasks get the full AGENT_TIMEOUT_MS.
+// Simple tasks get AGENT_TIMEOUT_MS_SHORT (default: 3 minutes).
+export const AGENT_TIMEOUT_MS_SHORT = parseInt(
+  process.env.AGENT_TIMEOUT_MS_SHORT || envConfig.AGENT_TIMEOUT_MS_SHORT || '180000',
+  10,
+);
+
+const COMPLEX_KEYWORDS = /\b(build|create|scaffold|implement|write|fix|install|deploy|migrate|refactor|generate|add|update|modify|edit)\b/i;
+export function getTimeoutForMessage(message: string): number {
+  if (message.length > 300 || COMPLEX_KEYWORDS.test(message)) {
+    return AGENT_TIMEOUT_MS;
+  }
+  return AGENT_TIMEOUT_MS_SHORT;
+}
 
 // Context window limit for the model. Opus 4.6 (1M context) = 1,000,000.
 // Override via CONTEXT_LIMIT in .env if using a different model variant.
