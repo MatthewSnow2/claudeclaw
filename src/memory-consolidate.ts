@@ -63,11 +63,14 @@ export async function runConsolidation(chatId: string): Promise<void> {
     }
 
     // Format memories for Gemini
+    const safeJsonParse = (s: string): unknown => {
+      try { return JSON.parse(s); } catch { return s.split(',').map((t) => t.trim()).filter(Boolean); }
+    };
     const memoriesJson = memories.map((m) => ({
       id: m.id,
       summary: m.summary,
-      entities: JSON.parse(m.entities),
-      topics: JSON.parse(m.topics),
+      entities: safeJsonParse(m.entities),
+      topics: safeJsonParse(m.topics),
       importance: m.importance,
       created_at: new Date(m.created_at * 1000).toISOString(),
     }));
