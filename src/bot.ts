@@ -481,6 +481,7 @@ async function handleMessage(ctx: Context, message: string, forceVoiceReply = fa
     }
   }
 
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     // Progress callback: surface sub-agent lifecycle events to Telegram + SSE
     const onProgress = (event: AgentProgressEvent) => {
@@ -502,7 +503,7 @@ async function handleMessage(ctx: Context, message: string, forceVoiceReply = fa
     // Auto-abort if the agent runs too long. Use adaptive timeout: complex/long messages
     // get the full AGENT_TIMEOUT_MS (15m), short conversational ones get AGENT_TIMEOUT_MS_SHORT (3m).
     const effectiveTimeout = getTimeoutForMessage(fullMessage);
-    const timeoutId = setTimeout(() => {
+    timeoutId = setTimeout(() => {
       logger.warn({ chatId: chatIdStr, timeoutMs: effectiveTimeout }, 'Agent query timed out, aborting');
       abortCtrl.abort();
     }, effectiveTimeout);
@@ -628,6 +629,7 @@ async function handleMessage(ctx: Context, message: string, forceVoiceReply = fa
 
     setProcessing(chatIdStr, false, topicId);
   } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
     clearInterval(typingInterval);
     setActiveAbort(chatIdStr, null, topicId);
     setProcessing(chatIdStr, false, topicId);

@@ -24,6 +24,11 @@ const envConfig = readEnvFile([
   'AUTO_ARCHIVE_DAYS',
   'TOPIC_CLASSIFY_ENABLED',
   'FORUM_CHAT_ID',
+  'AGENT_TIMEOUT_MS',
+  'AGENT_TIMEOUT_MS_SHORT',
+  'MISSION_TIMEOUT_MS',
+  'SUBTASK_TIMEOUT_MS',
+  'MISSION_MAX_RETRIES',
 ]);
 
 // ── Multi-agent support ──────────────────────────────────────────────

@@ -454,7 +454,7 @@ async function executeSubtask(
         missionId, subtaskId: subtask.id, agentId: subtask.agent_id,
         status: 'failed', description: 'Subtask timed out',
       });
-      return;
+      throw new Error('Subtask timed out');
     }
 
     const text = result.text?.trim() || 'Completed with no output.';
