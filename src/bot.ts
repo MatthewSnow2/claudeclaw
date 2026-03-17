@@ -610,6 +610,7 @@ export function createBot(): Bot {
     { command: 'delegate', description: 'Delegate task to agent' },
     { command: 'mission', description: 'Propose a multi-agent mission' },
     { command: 'cancel', description: 'Cancel pending/running mission' },
+    { command: 'status', description: 'Query Command Center mission status' },
   ];
   const skillCommands = discoverSkillCommands();
   const allCommands = [...builtInCommands, ...skillCommands].slice(0, 100); // Telegram limit: 100 commands
@@ -631,8 +632,9 @@ export function createBot(): Bot {
       '/wa — WhatsApp messages\n' +
       '/slack — Slack messages\n' +
       '/dashboard — Web dashboard\n' +
-      '/stop — Stop current processing\n\n' +
-      'Multi-agent orchestration has moved to the Command Center.\n\n' +
+      '/stop — Stop current processing\n' +
+      '/status — Query Command Center missions\n\n' +
+      'Multi-agent orchestration: http://10.0.0.46:3142\n\n' +
       'You can also send voice notes, photos, files, and videos.'
     );
   });
@@ -930,8 +932,62 @@ export function createBot(): Bot {
     await ctx.reply('Mission management is moving to the Command Center.');
   });
 
+  // /status — query Command Center for mission status
+  bot.command('status', async (ctx) => {
+    if (!isAuthorised(ctx.chat!.id)) return;
+    const missionId = ctx.match?.trim();
+    try {
+      const url = missionId
+        ? `http://localhost:3142/api/status/${missionId}`
+        : 'http://localhost:3142/api/status';
+      const res = await fetch(url);
+      if (!res.ok) {
+        await ctx.reply(`Command Center returned ${res.status}`);
+        return;
+      }
+      const data = await res.json();
+
+      if (missionId) {
+        // Single mission status
+        const s = data as { mission_id: string; status: string; summary: string };
+        await ctx.reply(
+          `<b>Mission</b> <code>${s.mission_id.slice(0, 8)}</code>\n` +
+          `<b>Status:</b> ${s.status}\n` +
+          `<b>Summary:</b> ${s.summary}`,
+          { parse_mode: 'HTML' },
+        );
+      } else {
+        // Overview
+        const s = data as { active_count: number; active: Array<{ id: string; goal: string; status: string }>; recent_completed: Array<{ id: string; goal: string; status: string; duration_ms: number | null }> };
+        const lines: string[] = [];
+        if (s.active_count > 0) {
+          lines.push(`<b>Active missions (${s.active_count}):</b>`);
+          for (const m of s.active) {
+            lines.push(`  <code>${m.id.slice(0, 8)}</code> [${m.status}] ${escapeHtml(m.goal.slice(0, 60))}`);
+          }
+        } else {
+          lines.push('No active missions.');
+        }
+        if (s.recent_completed.length > 0) {
+          lines.push('');
+          lines.push('<b>Recent:</b>');
+          for (const m of s.recent_completed) {
+            const dur = m.duration_ms ? ` (${Math.round(m.duration_ms / 1000)}s)` : '';
+            lines.push(`  <code>${m.id.slice(0, 8)}</code> [${m.status}]${dur} ${escapeHtml(m.goal.slice(0, 60))}`);
+          }
+        }
+        lines.push('');
+        lines.push(`<i>Command Center: http://10.0.0.46:3142</i>`);
+        await ctx.reply(lines.join('\n'), { parse_mode: 'HTML' });
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      await ctx.reply(`Command Center unreachable: ${errMsg}`);
+    }
+  });
+
   // Text messages — and any slash commands not owned by this bot (skills, e.g. /todo /gmail)
-  const OWN_COMMANDS = new Set(['/start', '/help', '/newchat', '/respin', '/voice', '/model', '/memory', '/forget', '/chatid', '/wa', '/slack', '/dashboard', '/stop', '/agents', '/delegate', '/mission', '/cancel']);
+  const OWN_COMMANDS = new Set(['/start', '/help', '/newchat', '/respin', '/voice', '/model', '/memory', '/forget', '/chatid', '/wa', '/slack', '/dashboard', '/stop', '/status', '/agents', '/delegate', '/mission', '/cancel']);
   bot.on('message:text', async (ctx) => {
     const text = ctx.message.text;
     const chatIdStr = ctx.chat!.id.toString();
