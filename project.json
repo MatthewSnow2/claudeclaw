@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0.0",
+  "name": "claudeclaw",
+  "display_name": "ClaudeClaw",
+  "status": "active",
+  "purpose": "Persistent AI Chief of Staff accessible via Telegram. Runs Claude Agent SDK with the 'Data' persona to handle ecosystem coordination, research tasks, scheduled jobs, and multi-agent mission orchestration for ST Metro.",
+  "owner": "matthew",
+  "repo": {
+    "org": "MatthewSnow2",
+    "name": "claudeclaw",
+    "default_branch": "main",
+    "visibility": "public"
+  },
+  "local_path": "/home/apexaipc/projects/claudeclaw",
+  "tech_stack": {
+    "languages": [
+      "typescript"
+    ],
+    "frameworks": [
+      "grammy",
+      "claude-agent-sdk",
+      "hono",
+      "better-sqlite3"
+    ],
+    "databases": [
+      "sqlite"
+    ],
+    "runtime": "node-22"
+  },
+  "dependencies": [
+    {
+      "project": "st-factory",
+      "relationship": "consumes",
+      "description": "Reads persona metrics and contracts for Data character consistency."
+    },
+    {
+      "project": "metroplex",
+      "relationship": "consumes",
+      "description": "Receives dispatch tasks from Metroplex orchestrator. Future A2A Tier 1 integration."
+    },
+    {
+      "project": "perceptor",
+      "relationship": "extends",
+      "description": "Uses Perceptor MCP for cross-session context sharing with Claude Code."
+    }
+  ],
+  "health": {
+    "score": 90,
+    "factors": {
+      "recency": 100,
+      "build_pass": 85,
+      "test_coverage": 80,
+      "dependency_freshness": 90
+    },
+    "last_computed": "2026-03-17T04:52:10.308067+00:00"
+  },
+  "activity": {
+    "last_commit": "2026-03-16T16:25:27-05:00",
+    "last_build": {
+      "date": "2026-03-16T16:25:27-05:00",
+      "passed": true,
+      "test_count": 0,
+      "coverage_pct": 0
+    },
+    "commits_30d": 103,
+    "stale_threshold_days": 7
+  },
+  "nudge": {
+    "last_nudge": null,
+    "suppressed_until": null,
+    "history": []
+  },
+  "extensions": {
+    "service": {
+      "process_manager": "pm2",
+      "endpoints": [
+        {
+          "name": "Telegram Bot",
+          "url": "https://t.me/ClaudeClawBot",
+          "type": "telegram"
+        },
+        {
+          "name": "Health Dashboard",
+          "url": "http://10.0.0.46:3847",
+          "type": "http"
+        }
+      ],
+      "host": "probook"
+    }
+  }
+}

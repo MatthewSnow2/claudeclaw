@@ -21,9 +21,11 @@ const envConfig = readEnvFile([
   'GOOGLE_API_KEY',
   'ALLOWED_CHAT_IDS',
   'BACKGROUND_MAX_CONCURRENT',
-  'AUTO_ARCHIVE_DAYS',
-  'TOPIC_CLASSIFY_ENABLED',
-  'FORUM_CHAT_ID',
+  'AGENT_TIMEOUT_MS',
+  'AGENT_TIMEOUT_MS_SHORT',
+  'MISSION_TIMEOUT_MS',
+  'SUBTASK_TIMEOUT_MS',
+  'MISSION_MAX_RETRIES',
 ]);
 
 // ── Multi-agent support ──────────────────────────────────────────────
@@ -118,9 +120,51 @@ export const TYPING_REFRESH_MS = 4000;
 
 // Maximum time (ms) an agent query can run before being auto-aborted.
 // Prevents runaway commands (e.g. recursive `find /`) from blocking the bot indefinitely.
-// Default: 5 minutes. Override via AGENT_TIMEOUT_MS in .env.
+// Default: 15 minutes — raised from 5m because Data regularly does multi-file builds,
+// project scaffolding, and dashboard changes that legitimately take 10-12 minutes.
+// Override via AGENT_TIMEOUT_MS in .env.
 export const AGENT_TIMEOUT_MS = parseInt(
-  process.env.AGENT_TIMEOUT_MS || envConfig.AGENT_TIMEOUT_MS || '300000',
+  process.env.AGENT_TIMEOUT_MS || envConfig.AGENT_TIMEOUT_MS || '900000',
+  10,
+);
+
+// For simple/conversational messages, use a shorter timeout to fail fast.
+// A message is "complex" if it mentions build/create/scaffold/implement/write/fix
+// or is longer than 300 chars. Complex tasks get the full AGENT_TIMEOUT_MS.
+// Simple tasks get AGENT_TIMEOUT_MS_SHORT (default: 3 minutes).
+export const AGENT_TIMEOUT_MS_SHORT = parseInt(
+  process.env.AGENT_TIMEOUT_MS_SHORT || envConfig.AGENT_TIMEOUT_MS_SHORT || '180000',
+  10,
+);
+
+const COMPLEX_KEYWORDS = /\b(build|create|scaffold|implement|write|fix|install|deploy|migrate|refactor|generate|add|update|modify|edit)\b/i;
+export function getTimeoutForMessage(message: string): number {
+  if (message.length > 300 || COMPLEX_KEYWORDS.test(message)) {
+    return AGENT_TIMEOUT_MS;
+  }
+  return AGENT_TIMEOUT_MS_SHORT;
+}
+
+// Mission-specific timeouts — independent from per-message agent timeouts.
+// SUBTASK_TIMEOUT_MS: max time for a single focused subtask within a mission.
+// Default 10 minutes — subtasks are decomposed to be focused; if one needs 15m,
+// the decomposition was too coarse.
+export const SUBTASK_TIMEOUT_MS = parseInt(
+  process.env.SUBTASK_TIMEOUT_MS || envConfig.SUBTASK_TIMEOUT_MS || '600000',
+  10,
+);
+
+// MISSION_TIMEOUT_MS: overall wall-clock cap for an entire mission.
+// Default 45 minutes — a 5-subtask mission at 10m each = 50m worst case.
+export const MISSION_TIMEOUT_MS = parseInt(
+  process.env.MISSION_TIMEOUT_MS || envConfig.MISSION_TIMEOUT_MS || '2700000',
+  10,
+);
+
+// MISSION_MAX_RETRIES: how many times a timed-out subtask can be retried.
+// Only timeouts are retried, not logic errors.
+export const MISSION_MAX_RETRIES = parseInt(
+  process.env.MISSION_MAX_RETRIES || envConfig.MISSION_MAX_RETRIES || '1',
   10,
 );
 
@@ -149,27 +193,11 @@ export const DB_ENCRYPTION_KEY =
 export const GOOGLE_API_KEY =
   process.env.GOOGLE_API_KEY || envConfig.GOOGLE_API_KEY || '';
 
-// ── Forum Topics ────────────────────────────────────────────────
-
 /** Maximum concurrent background tasks (semaphore slots). */
 export const BACKGROUND_MAX_CONCURRENT = parseInt(
   process.env.BACKGROUND_MAX_CONCURRENT || envConfig.BACKGROUND_MAX_CONCURRENT || '2',
   10,
 );
-
-/** Days of inactivity before a forum topic is auto-archived. */
-export const AUTO_ARCHIVE_DAYS = parseInt(
-  process.env.AUTO_ARCHIVE_DAYS || envConfig.AUTO_ARCHIVE_DAYS || '7',
-  10,
-);
-
-/** Kill switch for LLM-powered topic classification. */
-export const TOPIC_CLASSIFY_ENABLED =
-  (process.env.TOPIC_CLASSIFY_ENABLED || envConfig.TOPIC_CLASSIFY_ENABLED || 'true').toLowerCase() === 'true';
-
-/** Explicit forum group chat ID. If set, this chat is treated as a forum regardless of auto-detection. */
-export const FORUM_CHAT_ID =
-  process.env.FORUM_CHAT_ID || envConfig.FORUM_CHAT_ID || '';
 
 /**
  * Build a composite key for per-topic state and queue isolation.

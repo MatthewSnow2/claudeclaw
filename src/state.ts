@@ -97,3 +97,41 @@ export function abortActiveQuery(chatId: string, topicId?: string | null): boole
   }
   return false;
 }
+
+// ── Active mission abort (separate lifecycle from per-message abort) ──
+// Supports multiple concurrent missions per chat context.
+
+const _activeMissions = new Map<string, Map<string, AbortController>>();
+
+export function setActiveMissionAbort(
+  chatId: string, missionId: string, ctrl: AbortController | null, topicId?: string | null,
+): void {
+  const key = contextKey(chatId, topicId);
+  if (ctrl && missionId) {
+    let missions = _activeMissions.get(key);
+    if (!missions) { missions = new Map(); _activeMissions.set(key, missions); }
+    missions.set(missionId, ctrl);
+  } else if (missionId) {
+    const missions = _activeMissions.get(key);
+    if (missions) {
+      missions.delete(missionId);
+      if (missions.size === 0) _activeMissions.delete(key);
+    }
+  }
+}
+
+export function abortActiveMission(chatId: string, topicId?: string | null): boolean {
+  const key = contextKey(chatId, topicId);
+  const missions = _activeMissions.get(key);
+  if (missions && missions.size > 0) {
+    for (const ctrl of missions.values()) ctrl.abort();
+    _activeMissions.delete(key);
+    return true;
+  }
+  return false;
+}
+
+export function getActiveMissionCount(chatId: string, topicId?: string | null): number {
+  const key = contextKey(chatId, topicId);
+  return _activeMissions.get(key)?.size ?? 0;
+}
