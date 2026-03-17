@@ -189,9 +189,23 @@ export function getDashboardHtml(token: string, chatId: string): string {
 </div>
 
 <!-- Projects Status -->
-<div id="projects-section" class="mb-5" style="display:none">
+<div id="projects-section" class="mb-5">
   <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Projects</h2>
   <div id="projects-container" class="flex flex-col gap-3"></div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <table class="hive-table" id="projects-table">
+      <thead>
+        <tr>
+          <th>Mission</th>
+          <th>Status</th>
+          <th>Last Completion</th>
+        </tr>
+      </thead>
+      <tbody id="projects-table-body">
+        <!-- initially empty -->
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <!-- Hive Mind Feed -->
@@ -898,10 +912,8 @@ async function loadProjects() {
     const r = await fetch('/api/projects?token=' + TOKEN);
     const data = await r.json();
     const projects = data.projects || [];
-    const section = document.getElementById('projects-section');
     const container = document.getElementById('projects-container');
-    if (!projects.length) { section.style.display = 'none'; return; }
-    section.style.display = '';
+    if (!projects.length) { return; }
 
     container.innerHTML = projects.map(p => {
       const s = PROJECT_STATUS_COLORS[p.status] || PROJECT_STATUS_COLORS.in_progress;
@@ -924,6 +936,21 @@ async function loadProjects() {
         \${blockers}\${waiting}
       </div>\`;
     }).join('');
+
+    const tbody = document.getElementById('projects-table-body');
+    if (tbody) {
+      tbody.innerHTML = projects.map(p => {
+        const s = PROJECT_STATUS_COLORS[p.status] || PROJECT_STATUS_COLORS.in_progress;
+        const ts = p.last_updated
+          ? new Date(p.last_updated).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+          : '\u2014';
+        return \`<tr>
+          <td class="text-sm text-white">\${p.name}</td>
+          <td><span class="pill" style="background:\${s.bg};color:\${s.badge};border:1px solid \${s.border}">\${s.label}</span></td>
+          <td class="text-xs text-gray-400">\${ts}</td>
+        </tr>\`;
+      }).join('');
+    }
   } catch(e) { console.error('projects load failed', e); }
 }
 

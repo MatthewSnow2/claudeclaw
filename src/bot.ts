@@ -37,7 +37,7 @@ import {
   formatPlanForTelegram,
   MissionProgress,
 } from './mission-control.js';
-import { emitChatEvent, setProcessing, setActiveAbort, abortActiveQuery, setActiveMissionAbort, abortActiveMission, getActiveMissionId } from './state.js';
+import { emitChatEvent, setProcessing, setActiveAbort, abortActiveQuery, setActiveMissionAbort, abortActiveMission, getActiveMissionCount } from './state.js';
 import { createTopic, closeTopic, reopenTopic, listTopics, recordTopicActivity, isForum, findArchivedTopicByName } from './topic-manager.js';
 import { classifyMessage } from './topic-classifier.js';
 import { TOPIC_CLASSIFY_ENABLED, FORUM_CHAT_ID } from './config.js';
@@ -356,16 +356,11 @@ async function handleMessage(ctx: Context, message: string, forceVoiceReply = fa
     if (lower === 'go' || lower === 'approve' || lower === 'yes') {
       pendingMissions.delete(ctxKey);
 
-      // Reject if a mission is already running in this context
-      const activeMission = getActiveMissionId(chatIdStr, topicId);
-      if (activeMission) {
-        await ctx.reply('A mission is already running. Use /stop to cancel it first.');
-        return;
-      }
-
+      const activeMissionCount = getActiveMissionCount(chatIdStr, topicId);
       const missionAbort = new AbortController();
       setActiveMissionAbort(chatIdStr, pendingMissionId, missionAbort, topicId);
-      await ctx.reply('Mission approved. Running in background -- updates will appear here.');
+      const countNote = activeMissionCount > 0 ? ` (${activeMissionCount + 1} missions running)` : '';
+      await ctx.reply(`Mission approved. Running in background${countNote} -- updates will appear here.`);
 
       // Fire-and-forget: returns immediately, frees messageQueue
       void (async () => {
