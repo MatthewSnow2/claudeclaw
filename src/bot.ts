@@ -19,6 +19,7 @@ import {
   contextKey,
   TYPING_REFRESH_MS,
   AGENT_TIMEOUT_MS,
+  COMMAND_CENTER_URL,
   getTimeoutForMessage,
 } from './config.js';
 import { clearSession, getRecentConversation, getRecentMemories, getRecentTaskOutputs, getSession, getSessionConversation, logConversationTurn, logToHiveMind, setSession, lookupWaChatId, saveWaMessageMap, saveTokenUsage } from './db.js';
@@ -612,6 +613,9 @@ export function createBot(): Bot {
     { command: 'cancel', description: 'Cancel pending/running mission' },
     { command: 'status', description: 'Query Command Center mission status' },
   ];
+  if (COMMAND_CENTER_URL) {
+    builtInCommands.push({ command: 'cmd', description: 'Ask Data about Command Center' });
+  }
   const skillCommands = discoverSkillCommands();
   const allCommands = [...builtInCommands, ...skillCommands].slice(0, 100); // Telegram limit: 100 commands
   bot.api.setMyCommands(allCommands)
@@ -932,14 +936,18 @@ export function createBot(): Bot {
     await ctx.reply('Mission management is moving to the Command Center.');
   });
 
-  // /status — query Command Center for mission status
+  // /status — query Command Center for mission status (requires COMMAND_CENTER_URL)
   bot.command('status', async (ctx) => {
     if (!isAuthorised(ctx.chat!.id)) return;
+    if (!COMMAND_CENTER_URL) {
+      await ctx.reply('Command Center not configured. Set COMMAND_CENTER_URL in .env.');
+      return;
+    }
     const missionId = ctx.match?.trim();
     try {
       const url = missionId
-        ? `http://localhost:3142/api/status/${missionId}`
-        : 'http://localhost:3142/api/status';
+        ? `${COMMAND_CENTER_URL}/api/status/${missionId}`
+        : `${COMMAND_CENTER_URL}/api/status`;
       const res = await fetch(url);
       if (!res.ok) {
         await ctx.reply(`Command Center returned ${res.status}`);
@@ -977,7 +985,7 @@ export function createBot(): Bot {
           }
         }
         lines.push('');
-        lines.push(`<i>Command Center: http://10.0.0.46:3142</i>`);
+        lines.push(`<i>Command Center: ${COMMAND_CENTER_URL}</i>`);
         await ctx.reply(lines.join('\n'), { parse_mode: 'HTML' });
       }
     } catch (err) {
@@ -986,8 +994,41 @@ export function createBot(): Bot {
     }
   });
 
+  // /cmd — lightweight Q&A with Command Center (optional — requires COMMAND_CENTER_URL)
+  if (COMMAND_CENTER_URL) {
+    bot.command('cmd', async (ctx) => {
+      if (!isAuthorised(ctx.chat!.id)) return;
+      const question = ctx.match?.trim();
+      if (!question) {
+        await ctx.reply('Usage: /cmd <question>\n\nExample: /cmd what agents are available?');
+        return;
+      }
+      try {
+        await ctx.replyWithChatAction('typing');
+        const res = await fetch(`${COMMAND_CENTER_URL}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: question }),
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          await ctx.reply(`CMD returned ${res.status}: ${body.slice(0, 200)}`);
+          return;
+        }
+        const data = await res.json() as { reply: string };
+        const reply = data.reply.slice(0, 4000);
+        await ctx.reply(reply, { parse_mode: 'Markdown' }).catch(() => {
+          ctx.reply(reply);
+        });
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        await ctx.reply(`Command Center unreachable: ${errMsg}`);
+      }
+    });
+  }
+
   // Text messages — and any slash commands not owned by this bot (skills, e.g. /todo /gmail)
-  const OWN_COMMANDS = new Set(['/start', '/help', '/newchat', '/respin', '/voice', '/model', '/memory', '/forget', '/chatid', '/wa', '/slack', '/dashboard', '/stop', '/status', '/agents', '/delegate', '/mission', '/cancel']);
+  const OWN_COMMANDS = new Set(['/start', '/help', '/newchat', '/respin', '/voice', '/model', '/memory', '/forget', '/chatid', '/wa', '/slack', '/dashboard', '/stop', '/status', '/cmd', '/agents', '/delegate', '/mission', '/cancel']);
   bot.on('message:text', async (ctx) => {
     const text = ctx.message.text;
     const chatIdStr = ctx.chat!.id.toString();

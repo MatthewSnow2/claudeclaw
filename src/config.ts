@@ -26,6 +26,7 @@ const envConfig = readEnvFile([
   'MISSION_TIMEOUT_MS',
   'SUBTASK_TIMEOUT_MS',
   'MISSION_MAX_RETRIES',
+  'COMMAND_CENTER_URL',
 ]);
 
 // ── Multi-agent support ──────────────────────────────────────────────
@@ -184,6 +185,12 @@ export const DASHBOARD_TOKEN =
   process.env.DASHBOARD_TOKEN || envConfig.DASHBOARD_TOKEN || '';
 export const DASHBOARD_URL =
   process.env.DASHBOARD_URL || envConfig.DASHBOARD_URL || '';
+
+// Command Center (CMD) integration — optional.
+// Set COMMAND_CENTER_URL to enable /cmd and /status commands.
+// Example: http://localhost:3142 or http://10.0.0.46:3142
+export const COMMAND_CENTER_URL =
+  process.env.COMMAND_CENTER_URL || envConfig.COMMAND_CENTER_URL || '';
 
 // Database encryption key (SQLCipher). Required for encrypted database access.
 export const DB_ENCRYPTION_KEY =
