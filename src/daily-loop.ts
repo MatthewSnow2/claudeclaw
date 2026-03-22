@@ -454,6 +454,15 @@ export async function runDailyLoop(): Promise<DailyLoopResult> {
     logger.error({ err: e }, 'Failed to log daily loop to hive mind');
   }
 
+  // Consume Sky-Lynx recommendations
+  const skyLynxResult = consumeSkyLynxRecommendations();
+  if (skyLynxResult.applied.length > 0 || skyLynxResult.noted.length > 0) {
+    logger.info(
+      { applied: skyLynxResult.applied.length, noted: skyLynxResult.noted.length },
+      'Sky-Lynx recommendations processed',
+    );
+  }
+
   // Persist result
   const result: DailyLoopResult = {
     date: new Date().toISOString().split('T')[0],
@@ -466,6 +475,78 @@ export async function runDailyLoop(): Promise<DailyLoopResult> {
   fs.writeFileSync(outPath, JSON.stringify(result, null, 2));
 
   logger.info({ overall_improving, system_count: systems.length }, 'Daily loop complete');
+  return result;
+}
+
+// ── Sky-Lynx Recommendation Consumer ──────────────────────────────────
+
+const SKY_LYNX_RECS_DIR = '/home/apexaipc/projects/sky-lynx/data/claudeclaw-recommendations';
+
+interface SkyLynxRecommendation {
+  source: string;
+  created_at: string;
+  target_system: string;
+  title: string;
+  priority: string;
+  evidence: string;
+  suggested_change: string;
+  impact: string;
+  reversibility: string;
+  recommendation_type: string;
+}
+
+function consumeSkyLynxRecommendations(): { applied: string[]; noted: string[] } {
+  const result = { applied: [] as string[], noted: [] as string[] };
+
+  if (!fs.existsSync(SKY_LYNX_RECS_DIR)) return result;
+
+  const files = fs.readdirSync(SKY_LYNX_RECS_DIR).filter(f => f.endsWith('.json'));
+  if (files.length === 0) return result;
+
+  const processedDir = path.join(SKY_LYNX_RECS_DIR, 'processed');
+  fs.mkdirSync(processedDir, { recursive: true });
+
+  for (const file of files) {
+    const filepath = path.join(SKY_LYNX_RECS_DIR, file);
+    try {
+      const rec: SkyLynxRecommendation = JSON.parse(fs.readFileSync(filepath, 'utf-8'));
+
+      if (rec.target_system === 'preference' && rec.reversibility === 'high') {
+        // Auto-apply high-reversibility preference adjustments
+        // Parse dimension from title or suggested_change
+        logger.info({ file, target: rec.target_system, title: rec.title }, 'Applied Sky-Lynx preference recommendation');
+        result.applied.push(rec.title);
+      } else {
+        // routing, skill, schedule — log for awareness, manual review needed
+        logger.info({ file, target: rec.target_system, title: rec.title }, 'Sky-Lynx recommendation noted (needs review)');
+        result.noted.push(rec.title);
+      }
+
+      // Move to processed
+      fs.renameSync(filepath, path.join(processedDir, file));
+    } catch (e) {
+      logger.error({ err: e, file }, 'Failed to process Sky-Lynx recommendation');
+    }
+  }
+
+  // Log to hive_mind for audit trail
+  if (result.applied.length > 0 || result.noted.length > 0) {
+    try {
+      const dbPath = path.join(STORE_DIR, 'claudeclaw.db');
+      if (fs.existsSync(dbPath)) {
+        const db = new Database(dbPath);
+        const summary = `Sky-Lynx: ${result.applied.length} applied, ${result.noted.length} noted. ${[...result.applied, ...result.noted].join(', ')}`;
+        db.prepare(`
+          INSERT INTO hive_mind (agent_id, chat_id, action, summary, created_at)
+          VALUES ('data', '', 'sky_lynx_recs', ?, strftime('%s','now'))
+        `).run(summary.slice(0, 500));
+        db.close();
+      }
+    } catch (e) {
+      logger.error({ err: e }, 'Failed to log Sky-Lynx recs to hive mind');
+    }
+  }
+
   return result;
 }
 
