@@ -10,6 +10,7 @@ import { startDashboard } from './dashboard.js';
 import { initDatabase } from './db.js';
 import { logger } from './logger.js';
 import { cleanupOldUploads } from './media.js';
+import { runPreferenceAnalysis } from './daily-loop.js';
 import { runConsolidation } from './memory-consolidate.js';
 import { runDecaySweep } from './memory.js';
 import { initMissionControl } from './mission-control.js';
@@ -165,6 +166,23 @@ async function main(): Promise<void> {
       );
     }, 30 * 60 * 1000);
     logger.info('Memory consolidation enabled (every 30 min)');
+  }
+
+  // Preference learning: analyze conversations and update preference profile daily
+  if (GOOGLE_API_KEY) {
+    // First run 5 minutes after startup
+    setTimeout(() => {
+      void runPreferenceAnalysis(24).catch((err) =>
+        logger.error({ err }, 'Initial preference analysis failed'),
+      );
+    }, 5 * 60 * 1000);
+    // Then every 24 hours
+    setInterval(() => {
+      void runPreferenceAnalysis(24).catch((err) =>
+        logger.error({ err }, 'Periodic preference analysis failed'),
+      );
+    }, 24 * 60 * 60 * 1000);
+    logger.info('Preference learning enabled (daily analysis)');
   }
 
   cleanupOldUploads();

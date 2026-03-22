@@ -1824,3 +1824,139 @@ export function getReadySubtasks(missionId: string): MissionSubtask[] {
     return deps.every((d) => completed.has(d));
   });
 }
+
+// ── Preference Profile ──────────────────────────────────────────────
+
+export interface PreferenceEntry {
+  id: number;
+  category: string;
+  dimension: string;
+  value: string;
+  confidence: number;
+  evidence_count: number;
+}
+
+/**
+ * Get all preferences above a confidence threshold, grouped by category.
+ * Used by buildMemoryContext() to inject preference profile into prompts.
+ * Cap: returns at most `limit` preferences, highest confidence first.
+ */
+export function getPreferenceProfile(minConfidence = 0.6, limit = 30): PreferenceEntry[] {
+  return db
+    .prepare(
+      `SELECT id, category, dimension, value, confidence, evidence_count
+       FROM preference_profile
+       WHERE confidence >= ?
+       ORDER BY confidence DESC, evidence_count DESC
+       LIMIT ?`,
+    )
+    .all(minConfidence, limit) as PreferenceEntry[];
+}
+
+/** Get all preferences (no confidence filter) for analysis comparison. */
+export function getAllPreferences(): PreferenceEntry[] {
+  return db
+    .prepare(
+      `SELECT id, category, dimension, value, confidence, evidence_count
+       FROM preference_profile
+       ORDER BY category, dimension`,
+    )
+    .all() as PreferenceEntry[];
+}
+
+/** Get conversation turns from the last N hours for preference analysis. */
+export function getRecentTurnsForAnalysis(hours = 24): Array<{ role: string; content: string; created_at: number }> {
+  const cutoff = Math.floor(Date.now() / 1000) - hours * 3600;
+  return db
+    .prepare(
+      `SELECT role, content, created_at FROM conversation_log
+       WHERE created_at >= ?
+       ORDER BY created_at ASC`,
+    )
+    .all(cutoff) as Array<{ role: string; content: string; created_at: number }>;
+}
+
+/**
+ * Upsert a preference: if dimension exists in category, update it.
+ * Otherwise insert a new one. Returns the preference id.
+ */
+export function upsertPreference(
+  category: string,
+  dimension: string,
+  value: string,
+  confidence: number,
+  source = 'daily_analysis',
+): number {
+  const now = Math.floor(Date.now() / 1000);
+  const existing = db
+    .prepare(
+      `SELECT id, value, confidence, evidence_count FROM preference_profile
+       WHERE category = ? AND dimension = ?`,
+    )
+    .get(category, dimension) as { id: number; value: string; confidence: number; evidence_count: number } | undefined;
+
+  if (existing) {
+    // Log change if value or confidence shifted
+    if (existing.value !== value || Math.abs(existing.confidence - confidence) > 0.01) {
+      logPreferenceChange(existing.id, existing.value, value, existing.confidence, confidence, 'daily analysis update');
+    }
+    db.prepare(
+      `UPDATE preference_profile
+       SET value = ?, confidence = ?, evidence_count = evidence_count + 1, updated_at = ?
+       WHERE id = ?`,
+    ).run(value, confidence, now, existing.id);
+    return existing.id;
+  }
+
+  const result = db.prepare(
+    `INSERT INTO preference_profile (category, dimension, value, confidence, evidence_count, source, version, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 1, ?, 1, ?, ?)`,
+  ).run(category, dimension, value, confidence, source, now, now);
+  return Number(result.lastInsertRowid);
+}
+
+/** Bump evidence_count and optionally confidence for an existing preference. */
+export function reinforcePreference(id: number, confidenceBoost = 0.05): void {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    `UPDATE preference_profile
+     SET evidence_count = evidence_count + 1,
+         confidence = MIN(1.0, confidence + ?),
+         updated_at = ?
+     WHERE id = ?`,
+  ).run(confidenceBoost, now, id);
+}
+
+/** Decay confidence for preferences not observed in recent analysis. */
+export function decayPreferenceConfidence(excludeIds: number[], decayAmount = 0.02): number {
+  if (excludeIds.length === 0) {
+    // Decay all
+    const result = db.prepare(
+      `UPDATE preference_profile SET confidence = MAX(0.1, confidence - ?) WHERE source != 'manual'`,
+    ).run(decayAmount);
+    return result.changes;
+  }
+  const placeholders = excludeIds.map(() => '?').join(',');
+  const result = db.prepare(
+    `UPDATE preference_profile
+     SET confidence = MAX(0.1, confidence - ?)
+     WHERE id NOT IN (${placeholders}) AND source != 'manual'`,
+  ).run(decayAmount, ...excludeIds);
+  return result.changes;
+}
+
+/** Log a preference change to the history table. */
+export function logPreferenceChange(
+  preferenceId: number,
+  oldValue: string | null,
+  newValue: string,
+  oldConfidence: number | null,
+  newConfidence: number,
+  reason: string,
+): void {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    `INSERT INTO preference_history (preference_id, old_value, new_value, old_confidence, new_confidence, reason, changed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(preferenceId, oldValue, newValue, oldConfidence, newConfidence, reason, now);
+}

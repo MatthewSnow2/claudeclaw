@@ -1,6 +1,7 @@
 import { agentObsidianConfig, GOOGLE_API_KEY } from './config.js';
 import {
   decayMemories,
+  getPreferenceProfile,
   getRecentConsolidations,
   getRecentHighImportanceMemories,
   logConversationTurn,
@@ -98,6 +99,23 @@ export async function buildMemoryContext(
     }
     blocks.push('[End memory context]');
     parts.push(blocks.join('\n'));
+  }
+
+  // Preference profile injection (target ~400 tokens)
+  // Only inject high-confidence prefs; compact format to minimize token usage
+  const prefs = getPreferenceProfile(0.75, 25);
+  if (prefs.length > 0) {
+    const grouped: Record<string, string[]> = {};
+    for (const p of prefs) {
+      if (!grouped[p.category]) grouped[p.category] = [];
+      grouped[p.category].push(p.value);
+    }
+    const prefLines = ['[Preference Profile]'];
+    for (const [cat, vals] of Object.entries(grouped)) {
+      prefLines.push(`  ${cat}: ${vals.join(' | ')}`);
+    }
+    prefLines.push('[End Preference Profile]');
+    parts.push(prefLines.join('\n'));
   }
 
   const obsidianBlock = buildObsidianContext(agentObsidianConfig);
