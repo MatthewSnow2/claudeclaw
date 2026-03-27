@@ -14,9 +14,10 @@ import crypto from 'crypto';
 import fs from 'fs';
 
 import { runAgent, UsageInfo } from './agent.js';
-import { loadAgentConfig, resolveAgentClaudeMd, listAgentIds } from './agent-config.js';
+import { loadAgentConfig, resolveAgentClaudeMd, resolveAgentDir, listAgentIds } from './agent-config.js';
 import { AgentCard, loadAllAgentCards, matchAgents } from './agent-card.js';
 import { PROJECT_ROOT, SUBTASK_TIMEOUT_MS, MISSION_TIMEOUT_MS, MISSION_MAX_RETRIES } from './config.js';
+import { executeWithEngine } from './plugins/agent-execution/index.js';
 import {
   createMission,
   createMissionSubtask,
@@ -159,6 +160,27 @@ export async function delegateToAgent(
       try { systemPrompt = fs.readFileSync(claudeMdPath, 'utf-8'); } catch { /* no CLAUDE.md */ }
     }
 
+    // Route to execution engine for agents with execution.mode === 'agent-sdk'
+    if (card.execution?.mode === 'agent-sdk') {
+      const engineResult = await executeWithEngine({
+        agentId,
+        prompt,
+        cwd: resolveAgentDir(agentId),
+        systemPrompt: systemPrompt || undefined,
+        model: card.model,
+        execution: card.execution,
+        abortController: new AbortController(),
+        onProgress,
+      });
+
+      const durationMs = Date.now() - start;
+      logToHiveMind(agentId, chatId, 'delegate_result', `Completed delegation from ${fromAgent}: ${(engineResult.text ?? '').slice(0, 120)}`);
+      onProgress?.(`${card.name} completed (${Math.round(durationMs / 1000)}s)`);
+
+      return { agentId, text: engineResult.text, usage: engineResult.usage, taskId, durationMs };
+    }
+
+    // Legacy path: prompt-inject via runAgent()
     const fullPrompt = systemPrompt
       ? `[Agent role — follow these instructions]\n${systemPrompt}\n[End agent role]\n\n${prompt}`
       : prompt;
@@ -473,38 +495,71 @@ async function executeSubtask(
       }
     }
 
-    // Build the prompt with verification criteria context
-    let fullPrompt = subtask.prompt;
-    if (systemPrompt) {
-      fullPrompt = `[Agent role — follow these instructions]\n${systemPrompt}\n[End agent role]\n\n${fullPrompt}`;
-    }
+    // Check if agent has execution engine config
+    const card = subtask.agent_id
+      ? agentCards.find((c) => c.id === subtask.agent_id)
+      : undefined;
+
+    // Append verification criteria to prompt
+    let taskPrompt = subtask.prompt;
     if (subtask.verification_criteria) {
-      fullPrompt += `\n\n[Success criteria: ${subtask.verification_criteria}]`;
+      taskPrompt += `\n\n[Success criteria: ${subtask.verification_criteria}]`;
     }
 
-    // Determine model — use agent's default if specified
-    let model: string | undefined;
-    if (subtask.agent_id) {
-      const card = agentCards.find((c) => c.id === subtask.agent_id);
-      model = card?.model;
-    }
+    let text: string;
+    let cost: number;
 
-    const result = await runAgent(fullPrompt, undefined, () => {}, undefined, model, abortCtrl);
-    clearTimeout(timer);
-    missionAbort?.removeEventListener('abort', onMissionAbort);
-
-    if (result.aborted) {
-      updateSubtaskStatus(subtask.id, 'failed');
-      setSubtaskError(subtask.id, 'Timed out');
-      onProgress?.({
-        missionId, subtaskId: subtask.id, agentId: subtask.agent_id,
-        status: 'failed', description: 'Subtask timed out',
+    if (card?.execution?.mode === 'agent-sdk' && subtask.agent_id) {
+      // Execution engine path — scoped tools via Agent SDK
+      const engineResult = await executeWithEngine({
+        agentId: subtask.agent_id,
+        prompt: taskPrompt,
+        cwd: resolveAgentDir(subtask.agent_id),
+        systemPrompt: systemPrompt || undefined,
+        model: card.model,
+        execution: card.execution,
+        abortController: abortCtrl,
       });
-      throw new Error('Subtask timed out');
-    }
+      clearTimeout(timer);
+      missionAbort?.removeEventListener('abort', onMissionAbort);
 
-    const text = result.text?.trim() || 'Completed with no output.';
-    const cost = result.usage?.totalCostUsd ?? 0;
+      if (engineResult.aborted) {
+        updateSubtaskStatus(subtask.id, 'failed');
+        setSubtaskError(subtask.id, 'Timed out');
+        onProgress?.({
+          missionId, subtaskId: subtask.id, agentId: subtask.agent_id,
+          status: 'failed', description: 'Subtask timed out',
+        });
+        throw new Error('Subtask timed out');
+      }
+
+      text = engineResult.text?.trim() || 'Completed with no output.';
+      cost = engineResult.usage?.totalCostUsd ?? 0;
+    } else {
+      // Legacy path — prompt-inject via runAgent()
+      let fullPrompt = taskPrompt;
+      if (systemPrompt) {
+        fullPrompt = `[Agent role — follow these instructions]\n${systemPrompt}\n[End agent role]\n\n${fullPrompt}`;
+      }
+
+      const model = card?.model;
+      const result = await runAgent(fullPrompt, undefined, () => {}, undefined, model, abortCtrl);
+      clearTimeout(timer);
+      missionAbort?.removeEventListener('abort', onMissionAbort);
+
+      if (result.aborted) {
+        updateSubtaskStatus(subtask.id, 'failed');
+        setSubtaskError(subtask.id, 'Timed out');
+        onProgress?.({
+          missionId, subtaskId: subtask.id, agentId: subtask.agent_id,
+          status: 'failed', description: 'Subtask timed out',
+        });
+        throw new Error('Subtask timed out');
+      }
+
+      text = result.text?.trim() || 'Completed with no output.';
+      cost = result.usage?.totalCostUsd ?? 0;
+    }
 
     updateSubtaskStatus(subtask.id, 'completed');
     setSubtaskResult(subtask.id, text.slice(0, 8000), cost);

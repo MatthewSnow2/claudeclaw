@@ -8,6 +8,7 @@
 
 import { listAgentIds, loadAgentConfig, resolveAgentDir } from './agent-config.js';
 import { logger } from './logger.js';
+import type { ExecutionConfig } from './plugins/agent-execution/index.js';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -33,6 +34,8 @@ export interface AgentCard {
   skills: AgentSkill[];
   /** Tags for coarse-grained matching (e.g., 'social-media', 'engineering', 'research'). */
   tags: string[];
+  /** Execution config — when present, agent supports scoped SDK execution. */
+  execution?: ExecutionConfig;
 }
 
 // ── Card Loading ─────────────────────────────────────────────────────
@@ -61,6 +64,7 @@ export function loadAgentCard(agentId: string): AgentCard | null {
         verification: s.verification,
       })),
       tags: config.tags,
+      execution: config.execution,
     };
   } catch (err) {
     logger.warn({ agentId, err }, 'Failed to load agent card');

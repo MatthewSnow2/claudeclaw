@@ -4,6 +4,8 @@ import yaml from 'js-yaml';
 
 import { CLAUDECLAW_CONFIG, PROJECT_ROOT } from './config.js';
 import { readEnvFile } from './env.js';
+import { parseExecutionConfig } from './plugins/agent-execution/index.js';
+import type { ExecutionConfig } from './plugins/agent-execution/index.js';
 
 export interface AgentSkillConfig {
   name: string;
@@ -26,6 +28,7 @@ export interface AgentConfig {
     folders: string[];
     readOnly?: string[];
   };
+  execution?: ExecutionConfig;
 }
 
 /**
@@ -126,7 +129,10 @@ export function loadAgentConfig(agentId: string): AgentConfig {
     };
   }
 
-  return { name, description, type: agentType, botTokenEnv, botToken, model, skills, tags, obsidian };
+  // Parse execution block (optional — enables scoped agent execution)
+  const execution = parseExecutionConfig(raw, agentId);
+
+  return { name, description, type: agentType, botTokenEnv, botToken, model, skills, tags, obsidian, execution };
 }
 
 /** Update the model field in an agent's agent.yaml file. */
