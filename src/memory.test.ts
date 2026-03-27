@@ -5,6 +5,7 @@ vi.mock('./db.js', () => ({
   getRecentHighImportanceMemories: vi.fn(),
   getOtherAgentActivity: vi.fn(() => []),
   getConsolidationsWithEmbeddings: vi.fn(() => []),
+  getPreferenceProfile: vi.fn(() => []),
   touchMemory: vi.fn(),
   penalizeMemory: vi.fn(),
   batchUpdateMemoryRelevance: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock('./db.js', () => ({
   pruneWaMessages: vi.fn(() => ({ messages: 0, outbox: 0, map: 0 })),
   pruneSlackMessages: vi.fn(() => 0),
   searchConsolidations: vi.fn(),
+  searchConversationHistory: vi.fn(() => []),
   getRecentConsolidations: vi.fn(),
 }));
 
@@ -142,8 +144,8 @@ describe('saveConversationTurn', () => {
 
   it('logs both user and assistant messages to conversation log', () => {
     saveConversationTurn('chat1', 'hello world from the user!!!', 'Noted.');
-    expect(mockLogConversationTurn).toHaveBeenCalledWith('chat1', 'user', 'hello world from the user!!!', undefined, 'main');
-    expect(mockLogConversationTurn).toHaveBeenCalledWith('chat1', 'assistant', 'Noted.', undefined, 'main');
+    expect(mockLogConversationTurn).toHaveBeenCalledWith('chat1', 'user', 'hello world from the user!!!', undefined, 'main', undefined);
+    expect(mockLogConversationTurn).toHaveBeenCalledWith('chat1', 'assistant', 'Noted.', undefined, 'main', undefined);
   });
 
   it('fires async ingestion', () => {

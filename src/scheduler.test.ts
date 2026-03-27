@@ -187,7 +187,7 @@ describe('task state machine', () => {
       updateTaskAfterRun('t1', futureNextRun, longResult, 'success');
 
       const tasks = getAllScheduledTasks('main');
-      expect(tasks[0].last_result).toHaveLength(500);
+      expect(tasks[0].last_result).toHaveLength(1000);
     });
 
     it('clears started_at after completion', () => {
