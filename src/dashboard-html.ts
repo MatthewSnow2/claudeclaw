@@ -1721,8 +1721,11 @@ async function loadMissionControl() {
           ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e;margin-right:4px"></span>'
           : '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;border:1px solid #555;margin-right:4px"></span>';
         const agentTasks = cols[id] || [];
+        const roleBadge = agent && agent.role === 'agent'
+          ? '<span style="font-size:9px;background:#1e3a5f;color:#58a6ff;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:400;letter-spacing:0">agent</span>'
+          : '<span style="font-size:9px;background:#2a2a2a;color:#6b7280;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:400;letter-spacing:0">persona</span>';
         html += '<div class="flex-shrink-0" style="min-width:220px;scroll-snap-align:start;">' +
-          '<div class="text-xs font-semibold mb-1 uppercase" style="color:' + color + '">' + dot + (agent ? agent.name : id) + '</div>' +
+          '<div class="text-xs font-semibold mb-1 uppercase" style="color:' + color + '">' + dot + (agent ? agent.name : id) + roleBadge + '</div>' +
           '<div data-drop-agent="' + id + '" ondragover="missionDragOver(event)" ondragleave="missionDragLeave(event)" ondrop="missionDrop(event)" style="border:1px solid #2a2a2a;border-radius:10px;padding:8px;min-height:120px;background:#141414;transition:border-color 0.2s,background 0.2s">' +
           (agentTasks.length ? agentTasks.map(renderMissionCard).join('') : '<div class="text-xs text-gray-600 text-center py-4">No tasks</div>') +
           '</div></div>';

@@ -74,6 +74,7 @@ export interface AgentInfo {
   id: string;
   name: string;
   description: string;
+  role: 'agent' | 'persona';
 }
 
 // ── State ────────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ const MAX_WORKERS = parseInt(process.env.MISSION_MAX_WORKERS || '3', 10);
 export function initMissionControl(): void {
   agentCards = loadAllAgentCards();
   logger.info(
-    { agents: agentCards.map((c) => `${c.id} (${c.type})`) },
+    { agents: agentCards.map((c) => `${c.id} (${c.execution ? 'agent' : 'persona'}, ${c.type})`) },
     'Mission Control initialized',
   );
 }
@@ -97,9 +98,14 @@ export function getAgentCards(): AgentCard[] {
   return [...agentCards];
 }
 
-/** Backward-compatible: return agent info for the /agents command. */
+/** Return agent info for the /agents command. Includes role (agent vs persona). */
 export function getAvailableAgents(): AgentInfo[] {
-  return agentCards.map((c) => ({ id: c.id, name: c.name, description: c.description }));
+  return agentCards.map((c) => ({
+    id: c.id,
+    name: c.name,
+    description: c.description,
+    role: c.execution ? 'agent' as const : 'persona' as const,
+  }));
 }
 
 // ── Simple Delegation (backward-compatible) ──────────────────────────

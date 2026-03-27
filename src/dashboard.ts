@@ -369,6 +369,8 @@ export function startDashboard(botApi?: Api<RawApi>): void {
           name: config.name,
           description: config.description,
           model: config.model ?? 'claude-opus-4-6',
+          type: config.type,
+          role: config.execution ? 'agent' : 'persona',
           running,
           todayTurns: stats.todayTurns,
           todayCost: stats.todayCost,
