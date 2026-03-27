@@ -22,5 +22,19 @@ module.exports = {
         NODE_ENV: 'production',
       },
     },
+    {
+      name: 'claw-starscream',
+      script: 'dist/index.js',
+      args: '--agent starscream',
+      cwd: __dirname,
+      exp_backoff_restart_delay: 100,
+      min_uptime: '30s',
+      max_restarts: 10,
+      kill_timeout: 5000,
+      restart_delay: 3000,
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
   ],
 };
