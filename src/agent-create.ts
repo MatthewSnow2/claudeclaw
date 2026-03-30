@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -219,6 +220,9 @@ export async function createAgent(opts: CreateAgentOpts): Promise<CreateAgentRes
   // Generate launchd plist (or systemd unit)
   const plistPath = generateServiceConfig(id);
 
+  // Best-effort: register in ST Agent Registry
+  registerInAgentRegistry(id, agentDir);
+
   logger.info({ agentId: id, agentDir, envKey, bot: tokenCheck.botInfo.username }, 'Agent created');
 
   return {
@@ -228,6 +232,70 @@ export async function createAgent(opts: CreateAgentOpts): Promise<CreateAgentRes
     plistPath,
     botInfo: tokenCheck.botInfo,
   };
+}
+
+// ── ST Agent Registry hook ──────────────────────────────────────────
+
+function registerInAgentRegistry(agentId: string, agentDir: string): void {
+  try {
+    const registryBase = path.join(os.homedir(), 'projects', 'st-agent-registry', 'agents', agentId);
+
+    // Skip if registry repo doesn't exist
+    const registryRoot = path.join(os.homedir(), 'projects', 'st-agent-registry');
+    if (!fs.existsSync(registryRoot)) {
+      logger.debug({ agentId }, 'ST Agent Registry not found, skipping registration');
+      return;
+    }
+
+    fs.mkdirSync(registryBase, { recursive: true });
+
+    // Copy agent.yaml
+    const agentYamlSrc = path.join(agentDir, 'agent.yaml');
+    if (fs.existsSync(agentYamlSrc)) {
+      fs.copyFileSync(agentYamlSrc, path.join(registryBase, 'agent.yaml'));
+    }
+
+    // Copy CLAUDE.md
+    const claudeMdSrc = path.join(agentDir, 'CLAUDE.md');
+    if (fs.existsSync(claudeMdSrc)) {
+      fs.copyFileSync(claudeMdSrc, path.join(registryBase, 'CLAUDE.md'));
+    }
+
+    // Compute sync_hash from CLAUDE.md content
+    let syncHash = '';
+    if (fs.existsSync(claudeMdSrc)) {
+      const content = fs.readFileSync(claudeMdSrc, 'utf-8');
+      syncHash = crypto.createHash('sha256').update(content).digest('hex');
+    }
+
+    // Create registry.yaml
+    const now = new Date().toISOString().split('T')[0];
+    const registryYaml = {
+      agent_id: agentId,
+      type: 'active',
+      registered_at: now,
+      registered_by: 'post-create-hook',
+      source_path: agentDir,
+      last_synced_at: now,
+      sync_hash: syncHash,
+      learning: {
+        total_patches_applied: 0,
+        total_patches_proposed: 0,
+        last_patch_at: null,
+        effectiveness_score: null,
+      },
+    };
+    fs.writeFileSync(
+      path.join(registryBase, 'registry.yaml'),
+      yaml.dump(registryYaml, { lineWidth: -1 }),
+      'utf-8',
+    );
+
+    logger.info({ agentId, registryBase }, 'Registered in ST Agent Registry');
+  } catch (err) {
+    // Best-effort: failure does NOT block agent creation
+    logger.warn({ agentId, err }, 'Failed to register in ST Agent Registry (non-fatal)');
+  }
 }
 
 // ── .env management ──────────────────────────────────────────────────
