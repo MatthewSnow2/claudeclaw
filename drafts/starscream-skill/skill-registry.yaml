@@ -1,0 +1,44 @@
+name: starscream-content-strategy
+version: "1.0.0"
+status: draft
+created: "2026-03-30"
+last_reviewed: null
+sync_hash: null
+
+source:
+  type: internal
+  url: null
+  author: "Sky-Lynx / engagement analysis"
+  date: "2026-03-30"
+
+taxonomy:
+  domain: content-strategy
+  complexity: intermediate
+
+metrics:
+  invocations_30d: 0
+  last_invoked: null
+  manual_rating: null
+  health_score: 50.0
+
+learning:
+  total_patches_applied: 0
+  total_patches_proposed: 0
+  last_patch_at: null
+  effectiveness_score: null
+
+lineage:
+  parent_version: null
+  derived_from: "agents/starscream/CLAUDE.md + starscream_analytics.db (25-post dataset)"
+  changelog:
+    - version: "1.0.0"
+      date: "2026-03-30"
+      changes:
+        - "Initial draft: content decision matrix extracted from 25-post engagement analysis"
+        - "Zero-engagement pattern blocklist from 11 zero-engagement posts"
+        - "Engagement-weighted topic ranking replacing static priority list"
+        - "Template selection rules tied to topic characteristics"
+
+dependencies:
+  - "social-media (Late API skill)"
+  - "banana-maker (image generation)"
