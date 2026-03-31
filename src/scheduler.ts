@@ -17,6 +17,7 @@ import {
   resetStuckWorkerMissionTasks,
 } from './db.js';
 import { listAgentIds, loadAgentConfig, resolveAgentClaudeMd } from './agent-config.js';
+import { ORCHESTRATOR_ENABLED, runOrchestrator } from './orchestrator-bridge.js';
 import { logger } from './logger.js';
 import { messageQueue } from './message-queue.js';
 import { runAgent } from './agent.js';
@@ -239,9 +240,37 @@ async function executeMissionTask(mission: { id: string; title: string; prompt: 
         logger.warn({ missionId: mission.id }, 'Mission task timed out');
         try { await sender('Mission task timed out: "' + mission.title + '"'); } catch {}
       } else {
-        const text = result.text?.trim() || 'Task completed with no output.';
+        let text = result.text?.trim() || 'Task completed with no output.';
         completeMissionTask(mission.id, text, 'completed');
         logger.info({ missionId: mission.id, agent: mission.assigned_agent }, 'Mission task completed');
+
+        // Run orchestrator reasoning loop on completed worker tasks
+        if (ORCHESTRATOR_ENABLED) {
+          try {
+            const missionResult = {
+              missionId: mission.id,
+              goal: mission.prompt,
+              status: 'completed' as const,
+              summary: text,
+              subtaskResults: [{
+                id: mission.id,
+                agentId: mission.assigned_agent || 'worker',
+                status: 'completed' as const,
+                result: text,
+                costUsd: 0,
+              }],
+              totalCostUsd: 0,
+              durationMs: 0,
+            };
+            const { updatedMissionResult } = await runOrchestrator(missionResult, chatId);
+            if (updatedMissionResult.summary && updatedMissionResult.summary !== text) {
+              text = updatedMissionResult.summary;
+            }
+            logger.info({ missionId: mission.id }, 'Orchestrator evaluation complete');
+          } catch (orchErr) {
+            logger.error({ err: orchErr, missionId: mission.id }, 'Orchestrator failed, using original result');
+          }
+        }
 
         // Send result to Telegram
         const agentLabel = isWorkerTask ? ` [${mission.assigned_agent}]` : '';
