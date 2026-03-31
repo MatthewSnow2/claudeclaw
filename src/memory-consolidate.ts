@@ -1,5 +1,6 @@
 import { generateContent, parseJsonResponse } from './gemini.js';
 import {
+  getAgentIdsWithUnconsolidatedMemories,
   getUnconsolidatedMemories,
   markMemoriesConsolidated,
   saveConsolidation,
@@ -59,15 +60,16 @@ const consolidatingChats = new Set<string>();
  * memories and creates synthesis records. Safe to call frequently; it's
  * a no-op if fewer than 2 memories are pending or if already running.
  */
-export async function runConsolidation(chatId: string): Promise<void> {
-  if (consolidatingChats.has(chatId)) {
-    logger.debug({ chatId }, 'Consolidation already running for this chat, skipping');
+export async function runConsolidation(chatId: string, agentId?: string): Promise<void> {
+  const lockKey = agentId ? `${chatId}:${agentId}` : chatId;
+  if (consolidatingChats.has(lockKey)) {
+    logger.debug({ chatId, agentId }, 'Consolidation already running for this chat/agent, skipping');
     return;
   }
 
-  consolidatingChats.add(chatId);
+  consolidatingChats.add(lockKey);
   try {
-    const memories = getUnconsolidatedMemories(chatId, 20);
+    const memories = getUnconsolidatedMemories(chatId, 20, agentId);
 
     if (memories.length < 2) {
       logger.debug({ count: memories.length }, 'Not enough memories to consolidate');
@@ -103,7 +105,7 @@ export async function runConsolidation(chatId: string): Promise<void> {
     const sourceIds = memories.map((m) => m.id);
 
     // Save the consolidation record
-    const consolidationId = saveConsolidation(chatId, sourceIds, result.summary, result.insight);
+    const consolidationId = saveConsolidation(chatId, sourceIds, result.summary, result.insight, agentId ?? 'main');
 
     // Generate embedding for semantic retrieval of consolidation insights
     try {
@@ -180,6 +182,17 @@ export async function runConsolidation(chatId: string): Promise<void> {
   } catch (err) {
     logger.error({ err }, 'Consolidation failed');
   } finally {
-    consolidatingChats.delete(chatId);
+    consolidatingChats.delete(lockKey);
+  }
+}
+
+/**
+ * Run consolidation for ALL agents that have unconsolidated memories in a chat.
+ * Used by the main process periodic consolidation loop.
+ */
+export async function runConsolidationAllAgents(chatId: string): Promise<void> {
+  const agentIds = getAgentIdsWithUnconsolidatedMemories(chatId);
+  for (const agentId of agentIds) {
+    await runConsolidation(chatId, agentId);
   }
 }

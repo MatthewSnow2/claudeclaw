@@ -12,6 +12,7 @@ export interface AgentSkillConfig {
   description: string;
   examples?: string[];
   verification?: string;
+  model?: string;
 }
 
 export interface AgentConfig {
@@ -102,6 +103,7 @@ export function loadAgentConfig(agentId: string): AgentConfig {
         description: (s['description'] as string) ?? '',
         examples: s['examples'] as string[] | undefined,
         verification: s['verification'] as string | undefined,
+        model: s['model'] as string | undefined,
       });
     }
   }

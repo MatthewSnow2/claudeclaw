@@ -112,7 +112,7 @@ export async function ingestConversationTurn(
 
     // Duplicate detection: skip if a very similar memory already exists
     if (embedding.length > 0) {
-      const existing = getMemoriesWithEmbeddings(chatId);
+      const existing = getMemoriesWithEmbeddings(chatId, agentId);
       for (const mem of existing) {
         const sim = cosineSimilarity(embedding, mem.embedding);
         if (sim > 0.85) {

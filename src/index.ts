@@ -12,7 +12,7 @@ import { initSecurity, setAuditCallback } from './security.js';
 import { logger } from './logger.js';
 import { cleanupOldUploads } from './media.js';
 import { runPreferenceAnalysis } from './daily-loop.js';
-import { runConsolidation } from './memory-consolidate.js';
+import { runConsolidationAllAgents } from './memory-consolidate.js';
 import { runDecaySweep } from './memory.js';
 import { initMissionControl } from './mission-control.js';
 import { initScheduler } from './scheduler.js';
@@ -43,6 +43,7 @@ if (AGENT_ID !== 'main') {
     botToken: agentConfig.botToken,
     cwd: agentDir,
     model: agentConfig.model,
+    skills: agentConfig.skills.map((s) => ({ name: s.name, examples: s.examples, model: s.model })),
     obsidian: agentConfig.obsidian,
     systemPrompt,
   });
@@ -172,12 +173,12 @@ async function main(): Promise<void> {
     if (ALLOWED_CHAT_ID && GOOGLE_API_KEY) {
       // Delay first consolidation 2 minutes after startup to let things settle
       setTimeout(() => {
-        void runConsolidation(ALLOWED_CHAT_ID).catch((err) =>
+        void runConsolidationAllAgents(ALLOWED_CHAT_ID).catch((err) =>
           logger.error({ err }, 'Initial consolidation failed'),
         );
       }, 2 * 60 * 1000);
       setInterval(() => {
-        void runConsolidation(ALLOWED_CHAT_ID).catch((err) =>
+        void runConsolidationAllAgents(ALLOWED_CHAT_ID).catch((err) =>
           logger.error({ err }, 'Periodic consolidation failed'),
         );
       }, 30 * 60 * 1000);

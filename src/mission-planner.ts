@@ -71,6 +71,7 @@ ${agentSummary}
 4. Use depends_on (array of subtask indices, 0-based) to express ordering constraints. Subtasks without dependencies run in parallel.
 5. Keep subtasks focused — prefer 3-6 subtasks over 1-2 overly broad ones.
 6. Do NOT create subtasks for things the user hasn't asked for (no over-engineering).
+7. **Bulk operation chunking:** If a goal involves processing many files or items (renaming across a codebase, bulk edits, mass updates), NEVER put all items into a single subtask. Split into chunks of 10-15 files per subtask. Each subtask gets a specific list of files or a scoped directory. Independent chunks should have NO dependencies between them so they run in parallel. Add a final verification subtask (depends_on all chunks) that confirms the full operation succeeded. This prevents individual subtasks from exceeding the 10-minute execution timeout.
 
 ## Goal
 ${goal}

@@ -15,6 +15,7 @@ import {
   MAX_MESSAGE_LENGTH,
   activeBotToken,
   agentDefaultModel,
+  agentSkills,
   agentSystemPrompt,
   contextKey,
   TYPING_REFRESH_MS,
@@ -136,6 +137,24 @@ const DEFAULT_MODEL_LABEL = 'opus';
 
 export function setMainModelOverride(model: string): void {
   if (ALLOWED_CHAT_ID) chatModelOverride.set(ALLOWED_CHAT_ID, model);
+}
+
+/**
+ * Match a user message against configured skill examples to find a
+ * skill-specific model override. Returns undefined if no skill matches
+ * or the matched skill has no model override.
+ */
+function resolveSkillModel(message: string): string | undefined {
+  if (agentSkills.length === 0) return undefined;
+  const lower = message.toLowerCase();
+  for (const skill of agentSkills) {
+    if (!skill.model) continue;
+    if (!skill.examples || skill.examples.length === 0) continue;
+    for (const example of skill.examples) {
+      if (lower.includes(example.toLowerCase())) return skill.model;
+    }
+  }
+  return undefined;
 }
 
 // WhatsApp state per Telegram chat
@@ -635,7 +654,7 @@ async function handleMessage(ctx: Context, message: string, forceVoiceReply = fa
       sessionId,
       () => void sendTyping(ctx.api, chatId),
       onProgress,
-      chatModelOverride.get(ctxKey) ?? agentDefaultModel,
+      chatModelOverride.get(ctxKey) ?? resolveSkillModel(message) ?? agentDefaultModel,
       abortCtrl,
       onStreamText,
     );
@@ -1093,7 +1112,7 @@ export function createBot(): Bot {
   bot.command('memory', async (ctx) => {
     if (await replyIfLocked(ctx)) return;
     const chatId = ctx.chat!.id.toString();
-    const recent = getRecentMemories(chatId, 10);
+    const recent = getRecentMemories(chatId, 10, AGENT_ID);
     if (recent.length === 0) {
       await ctx.reply('No memories yet.');
       return;

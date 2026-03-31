@@ -29,7 +29,7 @@
   },
   "dependencies": [
     {
-      "project": "st-factory",
+      "project": "st-records",
       "relationship": "consumes",
       "description": "Reads persona metrics and contracts for Data character consistency."
     },

@@ -41,6 +41,7 @@ export let activeBotToken =
   process.env.TELEGRAM_BOT_TOKEN || envConfig.TELEGRAM_BOT_TOKEN || '';
 export let agentCwd: string | undefined; // undefined = use PROJECT_ROOT
 export let agentDefaultModel: string | undefined; // from agent.yaml
+export let agentSkills: Array<{ name: string; examples?: string[]; model?: string }> = [];
 export let agentObsidianConfig: { vault: string; folders: string[]; readOnly?: string[] } | undefined;
 export let agentSystemPrompt: string | undefined; // loaded from agents/{id}/CLAUDE.md
 
@@ -49,6 +50,7 @@ export function setAgentOverrides(opts: {
   botToken: string;
   cwd: string;
   model?: string;
+  skills?: Array<{ name: string; examples?: string[]; model?: string }>;
   obsidian?: { vault: string; folders: string[]; readOnly?: string[] };
   systemPrompt?: string;
 }): void {
@@ -56,6 +58,7 @@ export function setAgentOverrides(opts: {
   activeBotToken = opts.botToken;
   agentCwd = opts.cwd;
   agentDefaultModel = opts.model;
+  agentSkills = opts.skills ?? [];
   agentObsidianConfig = opts.obsidian;
   agentSystemPrompt = opts.systemPrompt;
 }

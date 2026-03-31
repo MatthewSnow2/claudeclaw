@@ -41,3 +41,14 @@ CLAUDE.md
 agents/*/agent.yaml
 agents/*/CLAUDE.md
 .gitnexus
+
+# Agent working artifacts (research scrapes, search caches)
+.firecrawl/
+linkedin-posts/
+
+# One-off drafts/visualizations
+life-engine-prompt-draft.md
+agent-architecture.html
+
+# Local dev tool skills
+.claude/skills/gitnexus/

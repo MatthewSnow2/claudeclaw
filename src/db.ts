@@ -626,6 +626,14 @@ function runMigrations(database: Database.Database): void {
     logger.info('Migration: added pinned column to memories table');
   }
 
+  // Add agent_id to consolidations for per-agent memory scoping
+  const consCols = database.prepare(`PRAGMA table_info(consolidations)`).all() as Array<{ name: string }>;
+  if (!consCols.some((c) => c.name === 'agent_id')) {
+    database.exec(`ALTER TABLE consolidations ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'main'`);
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_consolidations_agent ON consolidations(chat_id, agent_id, created_at DESC)`);
+    logger.info('Migration: added agent_id column to consolidations table');
+  }
+
   // Mission Control: migrate assigned_agent from NOT NULL to nullable (allow unassigned tasks)
   const missionCols = database.prepare(`PRAGMA table_info(mission_tasks)`).all() as Array<{ name: string; notnull: number }>;
   const assignedCol = missionCols.find((c) => c.name === 'assigned_agent');
@@ -779,10 +787,11 @@ export function searchMemories(
   query: string,
   limit = 5,
   queryEmbedding?: number[],
+  agentId?: string,
 ): Memory[] {
   // Strategy 1: Vector similarity search (if embedding provided)
   if (queryEmbedding && queryEmbedding.length > 0) {
-    const candidates = getMemoriesWithEmbeddings(chatId);
+    const candidates = getMemoriesWithEmbeddings(chatId, agentId);
     if (candidates.length > 0) {
       const scored = candidates
         .map((c) => ({ id: c.id, score: cosineSimilarity(queryEmbedding, c.embedding) }))
@@ -808,15 +817,20 @@ export function searchMemories(
   if (keywords.length === 0) return [];
 
   const ftsQuery = keywords.map((w) => `"${w}"*`).join(' OR ');
-  let results = db
-    .prepare(
-      `SELECT memories.* FROM memories
+  const ftsSQL = agentId
+    ? `SELECT memories.* FROM memories
+       JOIN memories_fts ON memories.id = memories_fts.rowid
+       WHERE memories_fts MATCH ? AND memories.chat_id = ? AND memories.agent_id = ? AND memories.superseded_by IS NULL
+       ORDER BY rank
+       LIMIT ?`
+    : `SELECT memories.* FROM memories
        JOIN memories_fts ON memories.id = memories_fts.rowid
        WHERE memories_fts MATCH ? AND memories.chat_id = ? AND memories.superseded_by IS NULL
        ORDER BY rank
-       LIMIT ?`,
-    )
-    .all(ftsQuery, chatId, limit) as Memory[];
+       LIMIT ?`;
+  let results = (agentId
+    ? db.prepare(ftsSQL).all(ftsQuery, chatId, agentId, limit)
+    : db.prepare(ftsSQL).all(ftsQuery, chatId, limit)) as Memory[];
 
   if (results.length > 0) return results;
 
@@ -830,14 +844,18 @@ export function searchMemories(
     likeParams.push(pattern, pattern, pattern, pattern);
   }
 
-  results = db
-    .prepare(
-      `SELECT * FROM memories
+  const likeSQL = agentId
+    ? `SELECT * FROM memories
+       WHERE chat_id = ? AND agent_id = ? AND superseded_by IS NULL AND (${likeConditions})
+       ORDER BY importance DESC, accessed_at DESC
+       LIMIT ?`
+    : `SELECT * FROM memories
        WHERE chat_id = ? AND superseded_by IS NULL AND (${likeConditions})
        ORDER BY importance DESC, accessed_at DESC
-       LIMIT ?`,
-    )
-    .all(chatId, ...likeParams, limit) as Memory[];
+       LIMIT ?`;
+  results = (agentId
+    ? db.prepare(likeSQL).all(chatId, agentId, ...likeParams, limit)
+    : db.prepare(likeSQL).all(chatId, ...likeParams, limit)) as Memory[];
 
   return results;
 }
@@ -846,10 +864,11 @@ export function saveMemoryEmbedding(memoryId: number, embedding: number[]): void
   db.prepare('UPDATE memories SET embedding = ? WHERE id = ?').run(JSON.stringify(embedding), memoryId);
 }
 
-export function getMemoriesWithEmbeddings(chatId: string): Array<{ id: number; embedding: number[]; summary: string; importance: number }> {
-  const rows = db
-    .prepare('SELECT id, embedding, summary, importance FROM memories WHERE chat_id = ? AND embedding IS NOT NULL AND superseded_by IS NULL')
-    .all(chatId) as Array<{ id: number; embedding: string; summary: string; importance: number }>;
+export function getMemoriesWithEmbeddings(chatId: string, agentId?: string): Array<{ id: number; embedding: number[]; summary: string; importance: number }> {
+  const sql = agentId
+    ? 'SELECT id, embedding, summary, importance FROM memories WHERE chat_id = ? AND agent_id = ? AND embedding IS NOT NULL AND superseded_by IS NULL'
+    : 'SELECT id, embedding, summary, importance FROM memories WHERE chat_id = ? AND embedding IS NOT NULL AND superseded_by IS NULL';
+  const rows = (agentId ? db.prepare(sql).all(chatId, agentId) : db.prepare(sql).all(chatId)) as Array<{ id: number; embedding: string; summary: string; importance: number }>;
   return rows.map((r) => ({
     id: r.id,
     embedding: JSON.parse(r.embedding) as number[],
@@ -858,7 +877,15 @@ export function getMemoriesWithEmbeddings(chatId: string): Array<{ id: number; e
   }));
 }
 
-export function getRecentHighImportanceMemories(chatId: string, limit = 5): Memory[] {
+export function getRecentHighImportanceMemories(chatId: string, limit = 5, agentId?: string): Memory[] {
+  if (agentId) {
+    return db
+      .prepare(
+        `SELECT * FROM memories WHERE chat_id = ? AND agent_id = ? AND importance >= 0.5
+         ORDER BY accessed_at DESC LIMIT ?`,
+      )
+      .all(chatId, agentId, limit) as Memory[];
+  }
   return db
     .prepare(
       `SELECT * FROM memories WHERE chat_id = ? AND importance >= 0.5
@@ -867,7 +894,14 @@ export function getRecentHighImportanceMemories(chatId: string, limit = 5): Memo
     .all(chatId, limit) as Memory[];
 }
 
-export function getRecentMemories(chatId: string, limit = 5): Memory[] {
+export function getRecentMemories(chatId: string, limit = 5, agentId?: string): Memory[] {
+  if (agentId) {
+    return db
+      .prepare(
+        'SELECT * FROM memories WHERE chat_id = ? AND agent_id = ? ORDER BY accessed_at DESC LIMIT ?',
+      )
+      .all(chatId, agentId, limit) as Memory[];
+  }
   return db
     .prepare(
       'SELECT * FROM memories WHERE chat_id = ? ORDER BY accessed_at DESC LIMIT ?',
@@ -939,7 +973,15 @@ export function unpinMemory(memoryId: number): void {
 
 // ── Consolidation CRUD ──────────────────────────────────────────────
 
-export function getUnconsolidatedMemories(chatId: string, limit = 20): Memory[] {
+export function getUnconsolidatedMemories(chatId: string, limit = 20, agentId?: string): Memory[] {
+  if (agentId) {
+    return db
+      .prepare(
+        `SELECT * FROM memories WHERE chat_id = ? AND agent_id = ? AND consolidated = 0
+         ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(chatId, agentId, limit) as Memory[];
+  }
   return db
     .prepare(
       `SELECT * FROM memories WHERE chat_id = ? AND consolidated = 0
@@ -953,13 +995,21 @@ export function saveConsolidation(
   sourceIds: number[],
   summary: string,
   insight: string,
+  agentId = 'main',
 ): number {
   const now = Math.floor(Date.now() / 1000);
   const result = db.prepare(
-    `INSERT INTO consolidations (chat_id, source_ids, summary, insight, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).run(chatId, JSON.stringify(sourceIds), summary, insight, now);
+    `INSERT INTO consolidations (chat_id, source_ids, summary, insight, created_at, agent_id)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(chatId, JSON.stringify(sourceIds), summary, insight, now, agentId);
   return result.lastInsertRowid as number;
+}
+
+export function getAgentIdsWithUnconsolidatedMemories(chatId: string): string[] {
+  const rows = db
+    .prepare('SELECT DISTINCT agent_id FROM memories WHERE chat_id = ? AND consolidated = 0')
+    .all(chatId) as Array<{ agent_id: string }>;
+  return rows.map((r) => r.agent_id);
 }
 
 export function saveConsolidationEmbedding(consolidationId: number, embedding: number[]): void {
@@ -967,10 +1017,13 @@ export function saveConsolidationEmbedding(consolidationId: number, embedding: n
     .run(JSON.stringify(embedding), 'embedding-001', consolidationId);
 }
 
-export function getConsolidationsWithEmbeddings(chatId: string): Array<{ id: number; embedding: number[]; summary: string; insight: string }> {
-  const rows = db
-    .prepare('SELECT id, embedding, summary, insight FROM consolidations WHERE chat_id = ? AND embedding IS NOT NULL AND embedding_model = ?')
-    .all(chatId, 'embedding-001') as Array<{ id: number; embedding: string; summary: string; insight: string }>;
+export function getConsolidationsWithEmbeddings(chatId: string, agentId?: string): Array<{ id: number; embedding: number[]; summary: string; insight: string }> {
+  const sql = agentId
+    ? 'SELECT id, embedding, summary, insight FROM consolidations WHERE chat_id = ? AND agent_id = ? AND embedding IS NOT NULL AND embedding_model = ?'
+    : 'SELECT id, embedding, summary, insight FROM consolidations WHERE chat_id = ? AND embedding IS NOT NULL AND embedding_model = ?';
+  const rows = (agentId
+    ? db.prepare(sql).all(chatId, agentId, 'embedding-001')
+    : db.prepare(sql).all(chatId, 'embedding-001')) as Array<{ id: number; embedding: string; summary: string; insight: string }>;
   return rows.map((r) => ({ ...r, embedding: JSON.parse(r.embedding) as number[] }));
 }
 
@@ -1001,7 +1054,15 @@ export function markMemoriesConsolidated(ids: number[]): void {
   db.prepare(`UPDATE memories SET consolidated = 1 WHERE id IN (${placeholders})`).run(...ids);
 }
 
-export function getRecentConsolidations(chatId: string, limit = 5): Consolidation[] {
+export function getRecentConsolidations(chatId: string, limit = 5, agentId?: string): Consolidation[] {
+  if (agentId) {
+    return db
+      .prepare(
+        `SELECT * FROM consolidations WHERE chat_id = ? AND agent_id = ?
+         ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(chatId, agentId, limit) as Consolidation[];
+  }
   return db
     .prepare(
       `SELECT * FROM consolidations WHERE chat_id = ?
@@ -1010,9 +1071,18 @@ export function getRecentConsolidations(chatId: string, limit = 5): Consolidatio
     .all(chatId, limit) as Consolidation[];
 }
 
-export function searchConsolidations(chatId: string, query: string, limit = 3): Consolidation[] {
+export function searchConsolidations(chatId: string, query: string, limit = 3, agentId?: string): Consolidation[] {
   // Simple LIKE search on consolidation summaries and insights
   const pattern = `%${query.replace(/[%_]/g, '')}%`;
+  if (agentId) {
+    return db
+      .prepare(
+        `SELECT * FROM consolidations
+         WHERE chat_id = ? AND agent_id = ? AND (summary LIKE ? OR insight LIKE ?)
+         ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(chatId, agentId, pattern, pattern, limit) as Consolidation[];
+  }
   return db
     .prepare(
       `SELECT * FROM consolidations
@@ -2438,6 +2508,43 @@ export function resetStuckMissionTasks(agentId: string): number {
   const result = db.prepare(
     `UPDATE mission_tasks SET status = 'queued', started_at = NULL WHERE status = 'running' AND assigned_agent = ?`,
   ).run(agentId);
+  return result.changes;
+}
+
+/**
+ * Claim the next queued mission task assigned to any of the given worker agent IDs.
+ * Used by the main process to pick up tasks for workers that don't have their own PM2 process.
+ */
+export function claimNextWorkerMissionTask(workerIds: string[]): MissionTask | null {
+  if (workerIds.length === 0) return null;
+  const placeholders = workerIds.map(() => '?').join(', ');
+  const txn = db.transaction(() => {
+    const task = db
+      .prepare(
+        `SELECT * FROM mission_tasks
+         WHERE assigned_agent IN (${placeholders}) AND status = 'queued'
+         ORDER BY priority DESC, created_at ASC
+         LIMIT 1`,
+      )
+      .get(...workerIds) as MissionTask | undefined;
+    if (!task) return null;
+    db.prepare(
+      `UPDATE mission_tasks SET status = 'running', started_at = ? WHERE id = ?`,
+    ).run(Math.floor(Date.now() / 1000), task.id);
+    return { ...task, status: 'running' as const, started_at: Math.floor(Date.now() / 1000) };
+  });
+  return txn();
+}
+
+/**
+ * Reset stuck mission tasks for a list of worker agent IDs.
+ */
+export function resetStuckWorkerMissionTasks(workerIds: string[]): number {
+  if (workerIds.length === 0) return 0;
+  const placeholders = workerIds.map(() => '?').join(', ');
+  const result = db.prepare(
+    `UPDATE mission_tasks SET status = 'queued', started_at = NULL WHERE status = 'running' AND assigned_agent IN (${placeholders})`,
+  ).run(...workerIds);
   return result.changes;
 }
 

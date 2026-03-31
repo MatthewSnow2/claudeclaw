@@ -1,3 +1,5 @@
+import fs from 'fs';
+
 import { CronExpressionParser } from 'cron-parser';
 
 import { AGENT_ID, ALLOWED_CHAT_ID } from './config.js';
@@ -9,9 +11,12 @@ import {
   updateTaskAfterRun,
   resetStuckTasks,
   claimNextMissionTask,
+  claimNextWorkerMissionTask,
   completeMissionTask,
   resetStuckMissionTasks,
+  resetStuckWorkerMissionTasks,
 } from './db.js';
+import { listAgentIds, loadAgentConfig, resolveAgentClaudeMd } from './agent-config.js';
 import { logger } from './logger.js';
 import { messageQueue } from './message-queue.js';
 import { runAgent } from './agent.js';
@@ -32,6 +37,12 @@ let sender: Sender;
 const runningTaskIds = new Set<string>();
 
 /**
+ * Worker agent IDs that don't have their own PM2 process.
+ * The main process picks up mission tasks for these agents.
+ */
+let workerAgentIds: string[] = [];
+
+/**
  * Initialise the scheduler. Call once after the Telegram bot is ready.
  * @param send  Function that sends a message to the user's Telegram chat.
  */
@@ -44,6 +55,25 @@ export function initScheduler(send: Sender, agentId = 'main'): void {
   sender = send;
   schedulerAgentId = agentId;
 
+  // Only the main process picks up worker tasks (named agents have their own process)
+  if (agentId === 'main') {
+    try {
+      workerAgentIds = listAgentIds().filter((id) => {
+        try {
+          const config = loadAgentConfig(id);
+          return config.type === 'worker';
+        } catch {
+          return false;
+        }
+      });
+      if (workerAgentIds.length > 0) {
+        logger.info({ workers: workerAgentIds }, 'Main scheduler will pick up mission tasks for worker agents');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to enumerate worker agents');
+    }
+  }
+
   // Recover tasks stuck in 'running' from a previous crash
   const recovered = resetStuckTasks(agentId);
   if (recovered > 0) {
@@ -52,6 +82,12 @@ export function initScheduler(send: Sender, agentId = 'main'): void {
   const recoveredMission = resetStuckMissionTasks(agentId);
   if (recoveredMission > 0) {
     logger.warn({ recovered: recoveredMission, agentId }, 'Reset stuck mission tasks from previous crash');
+  }
+  if (agentId === 'main' && workerAgentIds.length > 0) {
+    const recoveredWorker = resetStuckWorkerMissionTasks(workerAgentIds);
+    if (recoveredWorker > 0) {
+      logger.warn({ recovered: recoveredWorker }, 'Reset stuck worker mission tasks from previous crash');
+    }
   }
 
   setInterval(() => void runDueTasks(), 60_000);
@@ -139,14 +175,41 @@ async function runDueTasks(): Promise<void> {
 }
 
 async function runDueMissionTasks(): Promise<void> {
+  // 1. Check for tasks assigned to this agent
   const mission = claimNextMissionTask(schedulerAgentId);
-  if (!mission) return;
+  if (mission) {
+    await executeMissionTask(mission);
+    return;
+  }
 
+  // 2. Main process also picks up tasks for worker agents
+  if (schedulerAgentId === 'main' && workerAgentIds.length > 0) {
+    const workerMission = claimNextWorkerMissionTask(workerAgentIds);
+    if (workerMission) {
+      await executeMissionTask(workerMission);
+    }
+  }
+}
+
+async function executeMissionTask(mission: { id: string; title: string; prompt: string; assigned_agent: string | null }): Promise<void> {
   const missionKey = 'mission-' + mission.id;
   if (runningTaskIds.has(missionKey)) return;
   runningTaskIds.add(missionKey);
 
-  logger.info({ missionId: mission.id, title: mission.title }, 'Running mission task');
+  const isWorkerTask = mission.assigned_agent && mission.assigned_agent !== schedulerAgentId;
+  logger.info(
+    { missionId: mission.id, title: mission.title, agent: mission.assigned_agent, isWorkerTask },
+    'Running mission task',
+  );
+
+  // Load worker agent's CLAUDE.md as system prompt prefix
+  let workerSystemPrompt = '';
+  if (isWorkerTask && mission.assigned_agent) {
+    const claudeMdPath = resolveAgentClaudeMd(mission.assigned_agent);
+    if (claudeMdPath) {
+      try { workerSystemPrompt = fs.readFileSync(claudeMdPath, 'utf-8'); } catch { /* no CLAUDE.md */ }
+    }
+  }
 
   const chatId = ALLOWED_CHAT_ID || 'mission';
   messageQueue.enqueue(chatId, async () => {
@@ -154,7 +217,21 @@ async function runDueMissionTasks(): Promise<void> {
     const timeout = setTimeout(() => abortController.abort(), TASK_TIMEOUT_MS);
 
     try {
-      const result = await runAgent(mission.prompt, undefined, () => {}, undefined, undefined, abortController);
+      // Prefix the prompt with the worker's system prompt so the agent runs in-character
+      const fullPrompt = workerSystemPrompt
+        ? `[Agent role -- follow these instructions]\n${workerSystemPrompt}\n[End agent role]\n\n${mission.prompt}`
+        : mission.prompt;
+
+      // Use the worker's configured model if available
+      let model: string | undefined;
+      if (isWorkerTask && mission.assigned_agent) {
+        try {
+          const config = loadAgentConfig(mission.assigned_agent);
+          model = config.model;
+        } catch { /* use default */ }
+      }
+
+      const result = await runAgent(fullPrompt, undefined, () => {}, undefined, model, abortController);
       clearTimeout(timeout);
 
       if (result.aborted) {
@@ -164,9 +241,10 @@ async function runDueMissionTasks(): Promise<void> {
       } else {
         const text = result.text?.trim() || 'Task completed with no output.';
         completeMissionTask(mission.id, text, 'completed');
-        logger.info({ missionId: mission.id }, 'Mission task completed');
+        logger.info({ missionId: mission.id, agent: mission.assigned_agent }, 'Mission task completed');
 
         // Send result to Telegram
+        const agentLabel = isWorkerTask ? ` [${mission.assigned_agent}]` : '';
         for (const chunk of splitMessage(formatForTelegram(text))) {
           await sender(chunk);
         }
@@ -174,7 +252,7 @@ async function runDueMissionTasks(): Promise<void> {
         // Inject into conversation context so agent can reference it
         if (ALLOWED_CHAT_ID) {
           const activeSession = getSession(ALLOWED_CHAT_ID, schedulerAgentId);
-          logConversationTurn(ALLOWED_CHAT_ID, 'user', '[Mission task: ' + mission.title + ']: ' + mission.prompt, activeSession ?? undefined, schedulerAgentId);
+          logConversationTurn(ALLOWED_CHAT_ID, 'user', '[Mission task' + agentLabel + ': ' + mission.title + ']: ' + mission.prompt, activeSession ?? undefined, schedulerAgentId);
           logConversationTurn(ALLOWED_CHAT_ID, 'assistant', text, activeSession ?? undefined, schedulerAgentId);
         }
       }

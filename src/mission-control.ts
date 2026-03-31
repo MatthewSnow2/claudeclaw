@@ -35,6 +35,7 @@ import {
 } from './db.js';
 import { logger } from './logger.js';
 import { planMission as llmPlanMission, MissionPlan } from './mission-planner.js';
+import { ORCHESTRATOR_ENABLED, runOrchestrator } from './orchestrator-bridge.js';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -280,6 +281,29 @@ export async function approveMission(
 
   try {
     const result = await executeMission(missionId, onProgress, missionAbort.signal);
+
+    // Orchestrator reasoning loop — judge results, retry/reassign/replan if needed
+    if (ORCHESTRATOR_ENABLED && result.status === 'completed') {
+      logger.info({ missionId }, 'Running orchestrator reasoning loop');
+      onProgress?.({
+        missionId, subtaskId: '', agentId: 'orchestrator',
+        status: 'started', description: 'Evaluating results...',
+      });
+
+      try {
+        const { updatedMissionResult } = await runOrchestrator(
+          result,
+          mission.chat_id,
+          onProgress,
+        );
+        return updatedMissionResult;
+      } catch (orchErr) {
+        // Orchestrator failure is non-fatal — return original results
+        logger.error({ err: orchErr, missionId }, 'Orchestrator failed, returning original results');
+        return result;
+      }
+    }
+
     return result;
   } catch (err) {
     updateMissionStatus(missionId, 'failed');

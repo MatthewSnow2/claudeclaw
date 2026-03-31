@@ -108,6 +108,7 @@ describe('runConsolidation', () => {
       [10, 20, 30],
       consolidationResult.summary,
       consolidationResult.insight,
+      'main',
     );
 
     // Should wire bidirectional connections
